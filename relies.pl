@@ -18,11 +18,13 @@ my $reliesFile = $gitroot . "/.relies";
 my @children;
 my @parents;
 my @bereaved;
+my $full;
 
 GetOptions (
 
   "on=s{,}" => \@parents,
-  "off=s{,}" => \@bereaved
+  "off=s{,}" => \@bereaved,
+  "full" => \$full  #Flag to request full expansion when listing parents
 
 );
 
@@ -38,6 +40,9 @@ my %reliances;
 #If parents and/or bereaved were provided,
 # add/remove as necessary
 if (@parents || @bereaved) {
+
+  #Warn about flags being ignored
+  warn "WARNING: ignoring --full\n";
 
   print "Updating...";
 
@@ -78,6 +83,23 @@ if (@parents || @bereaved) {
 
 }
 
+#Get full list of ancestors for a file
+#IMPORTANT: this depends on all relationship
+# being properly validated for non-circularity
+sub ancestors {
+
+  my $child = shift;
+  my %ancestors;
+
+  foreach my $parent (keys %{$reliances{$child}}) {
+    $ancestors{$parent}++;
+    $ancestors{$_}++ for &ancestors($parent);
+  }
+
+  keys(%ancestors);
+
+}
+
 #Print reliances
 sub print_parents {
 
@@ -85,8 +107,12 @@ sub print_parents {
   my @parents = keys %{$reliances{$child}};
   return if @parents == 0;
 
+  #Choose the appropriate subset of antecessors
+  # to print
+  my @antecessors = $full ? &ancestors($child) : @parents;
+
   say "$child relies on:";
-  say "\t$_" for @parents;
+  say "\t$_" for @antecessors;
 
 }
 
