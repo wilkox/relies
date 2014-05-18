@@ -42,9 +42,7 @@ my %reliances;
 if (@parents || @bereaved) {
 
   #Warn about flags being ignored
-  warn "WARNING: ignoring --full\n";
-
-  print "Updating...";
+  warn "WARNING: ignoring --full\n" if $full;
 
   #Validate files
   &validate_file($_) for @children;
@@ -155,10 +153,18 @@ sub read_reliances {
 }
 
 #Add new reliances
-#TODO checks against loops
 sub add_parents {
 
   (my $child, my @parents) = @_;
+
+  #Check for loops
+  foreach my $parent (@parents) {
+    #TODO trace the path
+    my %ancestors = map { $_ => 1 } &ancestors($parent);
+    next unless exists $ancestors{$child};
+    die "ERROR: $child can't rely on $parent as this will create a loop\n";
+  }
+
   $reliances{$child}{$_}++ for @parents;
 
 }
