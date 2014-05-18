@@ -29,7 +29,68 @@ GetOptions (
 #Mop any remaining arguments into @children
 @children = @ARGV;
 
-#Validate all files
+#Hash storing reliances
+# Structure is simple: %reliances{Child}{Parent}
+# We use hash for parents instead of array because it makes
+# in-place edits easier
+my %reliances;
+
+#If parents and/or bereaved were provided,
+# add/remove as necessary
+if (@parents || @bereaved) {
+
+  print "Updating...";
+
+  #Validate files
+  &validate_file($_) for @children;
+  &validate_file($_) for @parents;
+  &validate_file($_) for @bereaved;
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Update as needed
+  &add_parents($_, @parents) for @children;
+  &remove_parents($_, @parents) for @children;
+
+  #Clean up reliances store
+  &do_housekeeping;
+
+  #Write reliances store to file
+  &write_reliances;
+
+  #Done
+  say "OK";
+  exit;
+
+#If no options were provided, give information about
+# the listed child(ren)
+} else {
+
+  #Validate the files
+  &validate_file($_) for @children;
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Describe parents for children
+  &print_parents($_) for @children;
+
+}
+
+#Print reliances
+sub print_parents {
+
+  my $child = shift;
+  my @parents = keys %{$reliances{$child}};
+  return if @parents == 0;
+
+  say "$child relies on:";
+  say "\t$_" for @parents;
+
+}
+
+#Validate files
 sub validate_file {
 
   my ($file) = @_;
@@ -40,23 +101,15 @@ sub validate_file {
   #Ensure the file exists
   die "ERROR: Cannot find file $file\n" unless -e $absPath;
 
+  #Ensure the file is a file
+  die "ERROR: $file is not a file\n" unless -f $absPath;
+
   #Ensure git knows about the file 
   die "ERROR: Git doesn't seem to know about $file\nRun 'git add $file' first\n" unless `git ls-files $absPath --error-unmatch 2> /dev/null`;
 
 }
 
-&validate_file($_) for @children;
-&validate_file($_) for @parents;
-&validate_file($_) for @bereaved;
-
-#Hash storing reliances
-# Structure is simple: %reliances{Child}{Parent}
-# We use hash for parents instead of array because it makes
-# in-place edits easier
-my %reliances;
-
 #Read existing reliances in
-&read_reliances;
 sub read_reliances { 
 
   if (! -e $reliesFile) {
@@ -84,8 +137,6 @@ sub add_parents {
 
 }
 
-&add_parents($_, @parents) for @children;
-
 #Remove obsolete reliances
 sub remove_parents {
 
@@ -94,8 +145,17 @@ sub remove_parents {
 
 }
 
+#Housekeeping on reliances hash
+sub do_housekeeping {
+
+  #Remove any children with no parents
+  foreach my $child (keys %reliances) {
+    delete $reliances{$child} if keys %{$reliances{$child}} == 0;
+  }
+
+}
+
 #Write reliances to file
-&write_reliances;
 sub write_reliances { 
 
   open RELIES, ">", $reliesFile;
