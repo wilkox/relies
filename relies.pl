@@ -49,37 +49,62 @@ sub validate_file {
 &validate_file($_) for @parents;
 &validate_file($_) for @bereaved;
 
+#Hash storing reliances
+# Structure is simple: %reliances{Child}{Parent}
+# We use hash for parents instead of array because it makes
+# in-place edits easier
+my %reliances;
 
-#Hash storing dependencies
-my %dependencies;
+#Read existing reliances in
+&read_reliances;
+sub read_reliances { 
 
-#TODO read existing dependencies in
+  if (! -e $reliesFile) {
+    say "No .relies for this repository - type 'relies init'";
+    return;
+  }
 
-#Add new dependencies
-#TODO checks against recursion
+  open RELIES, "<", $reliesFile;
+  while (<RELIES>) {
+    chomp;
+    my @row = split(/\t/, $_);
+    my $child = shift(@row);
+    %{$reliances{$child}} = map { $_ => 1 } @row;
+  }
+  close RELIES;
+
+}
+
+#Add new reliances
+#TODO checks against loops
 sub add_parents {
 
   (my $child, my @parents) = @_;
-  $dependencies{$child}{$_}++ for @parents;
+  $reliances{$child}{$_}++ for @parents;
 
 }
 
 &add_parents($_, @parents) for @children;
 
-#Remove obsolete dependencies
+#Remove obsolete reliances
 sub remove_parents {
 
   (my $child, my $bereaved) = @_;
-  delete($dependencies{$child}{$_}) for @bereaved;
+  delete($reliances{$child}{$_}) for @bereaved;
 
 }
 
-#Write new dependencies to file
-sub prepare_for_output { 
+#Write reliances to file
+&write_reliances;
+sub write_reliances { 
 
-  (my $child) = @_;
-  my $parents = join("\t", keys(%{$dependencies{$child}}));
-  return($child . "\t" . $parents . "\n");
+  open RELIES, ">", $reliesFile;
+  foreach my $child (keys %reliances) {
+  
+    my $parents = join("\t", keys(%{$reliances{$child}}));
+    say RELIES $child . "\t" . $parents;
+  
+  }
+  close RELIES;
 
 }
-write_file($reliesFile, map {&prepare_for_output($_)} @children);
