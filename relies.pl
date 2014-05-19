@@ -96,21 +96,27 @@ sub last_modified {
   #Get the git status of the file
   my $gitStatus = `git status -s $file`;
 
-  #If there are no local modifications
+  #If there are no local modifications, use the
+  # git commit timestamp
   if ($gitStatus eq "") {
 
-    my $gitTime = `git log -1 --format="%ad" --date=iso input_data.txt`;
+    my $gitTime = `git log -1 --format="%ad" --date=iso $file`;
 
-    #Need to do a little parsing on date as git doesn't actually output
+    #Need to do a little parsing on date as git doesn't output
     # correct ISO8601 format (thanks...)
     my $ISO8601 = qr/^(?<date>\d{4}-\d{2}-\d{2})\s(?<time>\d{2}:\d{2}:\d{2})\s\+(?<timezonehour>\d{2})(?<timezoneminute>\d{2})$/;
     die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n" unless $gitTime =~ /$ISO8601/;
     $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
     $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
+    $modTime = $modTime->datetime();
   
+  #If there are local modifications, use the filesystem's
+  # last modified timestamp
   } else {
 
-    $modTime = "some day";
+    my $fsTime = (stat($file))[9];
+    $modTime = DateTime->from_epoch( epoch => $fsTime );
+    $modTime = $modTime->datetime();
   
   }
   return $modTime;
