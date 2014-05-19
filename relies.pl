@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 #Preamble
 use Modern::Perl 2013;
@@ -6,6 +6,7 @@ use autodie;
 use Getopt::Long;
 use Cwd 'abs_path';
 use File::Slurp;
+use DateTime::Format::ISO8601;
 $|++;
 
 #Get the git repository root path
@@ -81,6 +82,41 @@ if (@parents || @bereaved) {
 
 }
 
+#Get the last modified time for a file
+#  Last modified time is defined as:
+#    If there are no local modifications to the file:
+#      Timestamp for last git commit referencing that file
+#    If there are local modifications to the file:
+#      Timestamp for last filesystem modification
+sub last_modified {
+
+  my $file = shift;
+  my $modTime;
+
+  #Get the git status of the file
+  my $gitStatus = `git status -s $file`;
+
+  #If there are no local modifications
+  if ($gitStatus eq "") {
+
+    my $gitTime = `git log -1 --format="%ad" --date=iso input_data.txt`;
+
+    #Need to do a little parsing on date as git doesn't actually output
+    # correct ISO8601 format (thanks...)
+    my $ISO8601 = qr/^(?<date>\d{4}-\d{2}-\d{2})\s(?<time>\d{2}:\d{2}:\d{2})\s\+(?<timezonehour>\d{2})(?<timezoneminute>\d{2})$/;
+    die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n" unless $gitTime =~ /$ISO8601/;
+    $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
+    $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
+  
+  } else {
+
+    $modTime = "some day";
+  
+  }
+  return $modTime;
+
+}
+
 #Get full list of ancestors for a file
 #IMPORTANT: this depends on all relationship
 # being properly validated for non-circularity
@@ -110,7 +146,7 @@ sub print_parents {
   my @antecessors = $full ? &ancestors($child) : @parents;
 
   say "$child relies on:";
-  say "\t$_" for @antecessors;
+  say "\t$_\t", &last_modified($_) for @antecessors;
 
 }
 
