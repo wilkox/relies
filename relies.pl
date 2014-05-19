@@ -11,7 +11,7 @@ use DateTime::Format::Strptime;
 use Term::ANSIColor;
 $|++;
 
-#Formatter to write ISO8601
+#Formatter to write ISO8601 timestamps
 # From https://movieos.org/blog/2006/perl-datetime-iso8601/
 my $ISO8601Formatter = DateTime::Format::Strptime->new( pattern => "%{iso8601_with_tz}" );
 sub DateTime::iso8601_with_tz {
@@ -145,20 +145,6 @@ die "ERROR: Somehow escaped the main loop without exiting\n";
 ###                                             ###
 ###################################################
 
-#Report the status of a file
-# 0 = No ancestor has a mod time > this file's mod time
-# 1 = An ancestor has a mod time > this file's mod time
-sub has_young_ancestors {
-
-  my $file = shift;
-  my $status = 0;
-
-  $status++ if &young_ancestors($file) > 0;
-
-  return $status;
-
-}
-
 #Return a list of ancestors with a mod time > than this file's mod time
 sub young_ancestors {
 
@@ -274,7 +260,7 @@ sub has_been_modified {
 sub colourise { 
 
   my $file = shift;
-  my $hasYoungAncestors = &has_young_ancestors($file);
+  my $hasYoungAncestors = scalar &young_ancestors($file);
 
   #Check for modifications to this file or ancestors
   my $selfOrAncestorsModified = &has_been_modified($file);
@@ -358,7 +344,6 @@ sub add_parents {
 
   #Check for loops
   foreach my $parent (@parents) {
-    #TODO trace the path
     my %ancestors = map { $_ => 1 } &ancestors($parent);
     next unless exists $ancestors{$child};
     die "ERROR: $child can't rely on $parent as this will create a loop\n";
