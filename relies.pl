@@ -7,8 +7,13 @@ use Getopt::Long;
 use Cwd 'abs_path';
 use File::Slurp;
 use DateTime::Format::ISO8601;
+use DateTime::Format::Strptime;
 use Term::ANSIColor;
 $|++;
+
+#Formatter to write ISO8601
+# From https://movieos.org/blog/2006/perl-datetime-iso8601/
+my $ISO8601Formatter = DateTime::Format::Strptime->new( pattern => "%{iso8601_with_tz}" );
 
 #Get the git repository root path
 my $gitroot = `git rev-parse --show-toplevel` or die "";
@@ -17,21 +22,24 @@ chomp $gitroot;
 my $reliesFile = $gitroot . "/.relies";
 
 #Parse command line options
-my @children;
 my @parents;
 my @bereaved;
 my $full;
+my @safe;
+my @unsafe;
 
 GetOptions (
 
   "on=s{,}" => \@parents,
   "off=s{,}" => \@bereaved,
-  "full" => \$full  #Flag to request full expansion when listing parents
+  "full" => \$full,
+  "safe=s{,}" => \@safe,
+  "unsafe=s{,}" => \@unsafe
 
 );
 
 #Mop any remaining arguments into @children
-@children = @ARGV;
+my @children = @ARGV;
 
 #Hash storing reliances
 # Structure is simple: %reliances{Child}{Parent}
@@ -39,17 +47,55 @@ GetOptions (
 # in-place edits easier
 my %reliances;
 
-#If parents and/or bereaved were provided,
-# add/remove as necessary
-if (@parents || @bereaved) {
+#Hash storing safe times
+# File -> Safe time (ISO8601)
+my %safeTime;
 
-  #Warn about flags being ignored
+#Safeing
+if (@safe || @unsafe) {
+
+  #Incompatible options
+  die "ERROR: Can't combine --safe or --unsafe with --on or --off\n" if @parents || @bereaved;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Validate files
-  &validate_file($_) for @children;
-  &validate_file($_) for @parents;
-  &validate_file($_) for @bereaved;
+  &validate_file($_) for (@safe, @unsafe);
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Check that all the safe/unsafe files are actually
+  # known to relies
+  foreach (@safe, @unsafe) {
+    die "ERROR: $_ does not have any reliances\n" unless exists $reliances{$_};
+  }
+
+  #Make safe
+  my $now = DateTime->now(time_zone => 'local');
+  $now->set_formatter($ISO8601Formatter);
+  $safeTime{$_} = $now for @safe;
+
+  #Make unsafe
+  $safeTime{$_} = "" for @unsafe;
+
+  #Write to file
+  &write_reliances;
+
+  #Done
+  say "OK";
+  exit;
+
+
+#If parents and/or bereaved were provided,
+# add/remove as necessary
+} elsif (@parents || @bereaved) {
+
+  #Warn about flags being ignored
+  die "ERROR: Can't combine --safe or --unsafe with --on or --off\n" if @safe || @unsafe;
+  warn "WARNING: ignoring --full\n" if $full;
+
+  #Validate files
+  &validate_file($_) for (@children, @parents, @bereaved);
 
   #Read reliances store into memory
   &read_reliances;
@@ -116,8 +162,13 @@ sub young_ancestors {
   my @youngAncestors;
 
   foreach my $ancestor (@ancestors) {
-    push(@youngAncestors, $ancestor) if &last_modified($ancestor) > $modTime;
+    my $ancestorModTime = &last_modified($ancestor);
+    my $compare = DateTime->compare($ancestorModTime, $modTime);
+    push(@youngAncestors, $ancestor) if $compare == 1;
   }
+  say "$_ is a young ancestor of $file" for @youngAncestors;
+  say "$_ last modified ", &last_modified($_) for @youngAncestors;
+  say "$file last modified ", &last_modified($file) if @youngAncestors;
   return @youngAncestors;
 }
 
@@ -127,6 +178,8 @@ sub young_ancestors {
 #      Timestamp for last git commit referencing that file
 #    If there are local modifications to the file:
 #      Timestamp for last filesystem modification
+#    If file has been safed and safed time is > last modified time:
+#      Safe time
 sub last_modified {
 
   my $file = shift;
@@ -135,7 +188,7 @@ sub last_modified {
 
   #If there are no local modifications, use the
   # git commit timestamp
-  if ($gitModified) {
+  if (! $gitModified) {
 
     my $gitTime = `git log -1 --format="%ad" --date=iso $file`;
 
@@ -154,6 +207,15 @@ sub last_modified {
     $modTime = DateTime->from_epoch( epoch => $fsTime );
   
   }
+
+  #If the file has been safed and the safe time > the mod time
+  # that would be used otherwise, use the safe time
+  if ($safeTime{$file}) {
+    my $safeTime = DateTime::Format::ISO8601->parse_datetime($safeTime{$file});
+    $modTime = $safeTime if $safeTime > $modTime;
+  }
+
+  $modTime->set_formatter($ISO8601Formatter);
   return $modTime;
 
 }
@@ -210,11 +272,11 @@ sub git_modified {
 sub colourise { 
 
   my $file = shift;
-  my $reliesStatus = &relies_status($file);
+  my $reliesProblem = &relies_status($file);
 
   #Check for modifications to this file or ancestors
-  my $fileMods = &git_modified($file);
-  $fileMods += &git_modified($_) for &ancestors($file);
+  my $filesModified = &git_modified($file);
+  $filesModified += &git_modified($_) for &ancestors($file);
 
   # Green = no local modifications in file/ancestory, no reliance problems
   # Yellow = local modifications in file/ancestory, no reliance problems
@@ -222,21 +284,22 @@ sub colourise {
   my $colour;
   
   #Red if there are reliance problems
-  if ($reliesStatus) {
+  if ($reliesProblem) {
     $colour = 'red';
+    say "Set $file to red because reliesProblem is $reliesProblem";
 
   #Yellow if there are local modifications but no reliance problems
-  } elsif (!$reliesStatus & $fileMods) {
+  } elsif ((not $reliesProblem) and $filesModified) {
     $colour = 'yellow';
 
   #Green if there are no local modifications and no reliance problems
-  } elsif (!$reliesStatus & !$fileMods) {
+  } elsif ((not $reliesProblem) and (not $filesModified)) {
     $colour = 'green';
 
   #If there are reliance problems but no file modifications, something
   # has gone horribly wrong
   } else {
-    die "ERROR: Something has gone horribly wrong\n";
+    die "ERROR: Something has gone horribly wrong";
   }
 
   print color $colour;
@@ -254,7 +317,7 @@ sub validate_file {
   my $absPath = abs_path($file);
 
   #Ensure the file exists
-  die "ERROR: Cannot find file $file\n" unless -e $absPath;
+  die "ERROR: Can't find file $file\n" unless -e $absPath;
 
   #Ensure the file is a file
   die "ERROR: $file is not a file\n" unless -f $absPath;
@@ -277,6 +340,10 @@ sub read_reliances {
     chomp;
     my @row = split(/\t/, $_);
     my $child = shift(@row);
+    my $safeTime = shift(@row);
+    unless ($safeTime eq "") {
+      $safeTime{$child} = DateTime::Format::ISO8601->parse_datetime($safeTime);
+    }
     %{$reliances{$child}} = map { $_ => 1 } @row;
   }
   close RELIES;
@@ -323,11 +390,29 @@ sub write_reliances {
 
   open RELIES, ">", $reliesFile;
   foreach my $child (keys %reliances) {
-  
+
+    #Get and format safe time, if it exists
+    my $safeTime;
+    if ($safeTime{$child}) {
+      $safeTime = $safeTime{$child};
+      $safeTime->set_formatter($ISO8601Formatter);
+    } else {
+      $safeTime = "";
+    }
+
     my $parents = join("\t", keys(%{$reliances{$child}}));
-    say RELIES $child . "\t" . $parents;
+    say RELIES $child . "\t" . $safeTime . "\t" . $parents;
   
   }
   close RELIES;
 
+}
+
+#Format DateTime objects as ISO8601 with time zone
+#From https://movieos.org/blog/2006/perl-datetime-iso8601/
+sub DateTime::iso8601_with_tz {
+  my $self = shift;
+  my $val = $self->strftime('%FT%T%z');
+  $val =~ s/(\d\d)$/:$1/;
+  return $val;
 }
