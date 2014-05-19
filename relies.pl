@@ -7,6 +7,7 @@ use Getopt::Long;
 use Cwd 'abs_path';
 use File::Slurp;
 use DateTime::Format::ISO8601;
+use Term::ANSIColor;
 $|++;
 
 #Get the git repository root path
@@ -80,6 +81,44 @@ if (@parents || @bereaved) {
   #Describe parents for children
   &print_parents($_) for @children;
 
+  #Done
+  exit;
+
+}
+
+die "ERROR: Somehow escaped the main loop without exiting\n";
+###################################################
+###                                             ###
+### END OF MAIN LOOP - BEGINNING OF SUBROUTINES ###
+###                                             ###
+###################################################
+
+#Report the status of a file
+# 0 = No ancestor has a mod time > this file's mod time
+# 1 = An ancestor has a mod time > this file's mod time
+sub relies_status {
+
+  my $file = shift;
+  my $status = 0;
+
+  $status++ if &young_ancestors($file) > 0;
+
+  return $status;
+
+}
+
+#Return a list of ancestors with a mod time > than this file's mod time
+sub young_ancestors {
+
+  my $file = shift;
+  my $modTime = &last_modified($file);
+  my @ancestors = &ancestors($file);
+  my @youngAncestors;
+
+  foreach my $ancestor (@ancestors) {
+    push(@youngAncestors, $ancestor) if &last_modified($ancestor) > $modTime;
+  }
+  return @youngAncestors;
 }
 
 #Get the last modified time for a file
@@ -92,13 +131,11 @@ sub last_modified {
 
   my $file = shift;
   my $modTime;
-
-  #Get the git status of the file
-  my $gitStatus = `git status -s $file`;
+  my $gitModified = &git_modified($file);
 
   #If there are no local modifications, use the
   # git commit timestamp
-  if ($gitStatus eq "") {
+  if ($gitModified) {
 
     my $gitTime = `git log -1 --format="%ad" --date=iso $file`;
 
@@ -108,7 +145,6 @@ sub last_modified {
     die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n" unless $gitTime =~ /$ISO8601/;
     $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
     $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
-    $modTime = $modTime->datetime();
   
   #If there are local modifications, use the filesystem's
   # last modified timestamp
@@ -116,7 +152,6 @@ sub last_modified {
 
     my $fsTime = (stat($file))[9];
     $modTime = DateTime->from_epoch( epoch => $fsTime );
-    $modTime = $modTime->datetime();
   
   }
   return $modTime;
@@ -151,8 +186,62 @@ sub print_parents {
   # to print
   my @antecessors = $full ? &ancestors($child) : @parents;
 
-  say "$child relies on:";
-  say "\t$_\t", &last_modified($_) for @antecessors;
+  &colourise($child);
+  say " relies on:";
+  foreach my $antecessor (@antecessors) {
+    print "\t";
+    &colourise($antecessor);
+    say "\t";
+  }
+
+}
+
+#Get the git modification status of a file
+sub git_modified {
+
+  my $file = shift;
+  my $gitStatus = `git status -s $file`;
+  my $gitModified = $gitStatus eq "" ? 0 : 1;
+  return $gitModified;
+
+}
+
+#Print a file, colourised by status
+sub colourise { 
+
+  my $file = shift;
+  my $reliesStatus = &relies_status($file);
+
+  #Check for modifications to this file or ancestors
+  my $fileMods = &git_modified($file);
+  $fileMods += &git_modified($_) for &ancestors($file);
+
+  # Green = no local modifications in file/ancestory, no reliance problems
+  # Yellow = local modifications in file/ancestory, no reliance problems
+  # Red = reliance problems
+  my $colour;
+  
+  #Red if there are reliance problems
+  if ($reliesStatus) {
+    $colour = 'red';
+
+  #Yellow if there are local modifications but no reliance problems
+  } elsif (!$reliesStatus & $fileMods) {
+    $colour = 'yellow';
+
+  #Green if there are no local modifications and no reliance problems
+  } elsif (!$reliesStatus & !$fileMods) {
+    $colour = 'green';
+
+  #If there are reliance problems but no file modifications, something
+  # has gone horribly wrong
+  } else {
+    die "ERROR: Something has gone horribly wrong\n";
+  }
+
+  print color $colour;
+  print $file;
+  print color 'reset';
 
 }
 
