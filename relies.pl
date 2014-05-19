@@ -21,6 +21,91 @@ sub DateTime::iso8601_with_tz {
   return $val;
 }
 
+#######################################
+###                                 ###
+###  BEGINNING OF CLASS DEFINITIONS ###
+###                                 ###
+#######################################
+
+package Child {
+
+  use Moose;
+
+  #The path passed to relies
+  has 'passed_path', is => 'ro', isa => 'Str';
+
+  #Get the git modification status of a file
+  sub has_been_modified {
+
+    my $self = shift;
+    my $fileName = $self->passed_path; #TODO fix handling of paths
+    my $gitStatus = `git status -s $fileName`;
+    my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
+    return $hasBeenModified;
+
+  }
+
+  #Get the last modified time for a file
+  #  Last modified time is defined as:
+  #    If there are no local modifications to the file:
+  #      Timestamp for last git commit referencing that file
+  #    If there are local modifications to the file:
+  #      Timestamp for last filesystem modification
+  sub last_modified {
+
+    my $self = shift;
+    my $modTime;
+    my $hasBeenModified = $self->has_been_modified;
+    my $fileName = $self->passed_path; #TODO fix handling of paths
+
+    #If there are no local modifications, use the
+    # git commit timestamp
+    if (! $hasBeenModified) {
+
+      my $gitTime = `git log -1 --format="%ad" --date=iso $fileName`;
+
+      #Need to do a little parsing on date as git doesn't output
+      # correct ISO8601 format (thanks...)
+      my $ISO8601 = qr/^(?<date>\d{4}-\d{2}-\d{2})\s(?<time>\d{2}:\d{2}:\d{2})\s\+(?<timezonehour>\d{2})(?<timezoneminute>\d{2})$/;
+      die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n" unless $gitTime =~ /$ISO8601/;
+      $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
+      $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
+    
+    #If there are local modifications, use the filesystem's
+    # last modified timestamp
+    } else {
+
+      my $fsTime = (stat($fileName))[9];
+      $modTime = DateTime->from_epoch( epoch => $fsTime );
+    
+    }
+
+    $modTime->set_formatter($ISO8601Formatter);
+    return $modTime;
+
+  }
+
+}
+
+
+say "Beginning OO tests";
+
+my $test = Child->new( passed_path => 'output_data.txt' );
+
+say "Passed path is ", $test->passed_path;
+
+say "I've been modified" if $test->has_been_modified;
+
+say "Last modified time is ", $test->last_modified;
+
+exit;
+
+###############################
+###                         ###
+###  BEGINNING OF MAIN LOOP ###
+###                         ###
+###############################
+
 #Get the git repository root path
 my $gitroot = `git rev-parse --show-toplevel` or die "";
 chomp $gitroot;
@@ -141,11 +226,11 @@ if (@safe || @unsafe) {
 }
 
 die "ERROR: Somehow escaped the main loop without exiting\n";
-###################################################
-###                                             ###
-### END OF MAIN LOOP - BEGINNING OF SUBROUTINES ###
-###                                             ###
-###################################################
+###########################################################
+###                                                     ###
+### END OF CLASS DEFINITIONS - BEGINNING OF SUBROUTINES ###
+###                                                     ###
+###########################################################
 
 #Return a list of ancestors with a mod time > than this file's mod time
 sub young_ancestors {
@@ -162,45 +247,6 @@ sub young_ancestors {
     push(@youngAncestors, $ancestor) if $compare == 1;
   }
   return @youngAncestors;
-}
-
-#Get the last modified time for a file
-#  Last modified time is defined as:
-#    If there are no local modifications to the file:
-#      Timestamp for last git commit referencing that file
-#    If there are local modifications to the file:
-#      Timestamp for last filesystem modification
-sub last_modified {
-
-  my $file = shift;
-  my $modTime;
-  my $hasBeenModified = &has_been_modified($file);
-
-  #If there are no local modifications, use the
-  # git commit timestamp
-  if (! $hasBeenModified) {
-
-    my $gitTime = `git log -1 --format="%ad" --date=iso $file`;
-
-    #Need to do a little parsing on date as git doesn't output
-    # correct ISO8601 format (thanks...)
-    my $ISO8601 = qr/^(?<date>\d{4}-\d{2}-\d{2})\s(?<time>\d{2}:\d{2}:\d{2})\s\+(?<timezonehour>\d{2})(?<timezoneminute>\d{2})$/;
-    die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n" unless $gitTime =~ /$ISO8601/;
-    $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
-    $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
-  
-  #If there are local modifications, use the filesystem's
-  # last modified timestamp
-  } else {
-
-    my $fsTime = (stat($file))[9];
-    $modTime = DateTime->from_epoch( epoch => $fsTime );
-  
-  }
-
-  $modTime->set_formatter($ISO8601Formatter);
-  return $modTime;
-
 }
 
 #Get full list of ancestors for a file
@@ -254,16 +300,6 @@ sub print_reliances {
     &print_colourised($antecessor);
     say "\t";
   }
-
-}
-
-#Get the git modification status of a file
-sub has_been_modified {
-
-  my $file = shift;
-  my $gitStatus = `git status -s $file`;
-  my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
-  return $hasBeenModified;
 
 }
 
