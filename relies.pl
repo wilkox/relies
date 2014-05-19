@@ -14,6 +14,12 @@ $|++;
 #Formatter to write ISO8601
 # From https://movieos.org/blog/2006/perl-datetime-iso8601/
 my $ISO8601Formatter = DateTime::Format::Strptime->new( pattern => "%{iso8601_with_tz}" );
+sub DateTime::iso8601_with_tz {
+  my $self = shift;
+  my $val = $self->strftime('%FT%T%z');
+  $val =~ s/(\d\d)$/:$1/;
+  return $val;
+}
 
 #Get the git repository root path
 my $gitroot = `git rev-parse --show-toplevel` or die "";
@@ -142,7 +148,7 @@ die "ERROR: Somehow escaped the main loop without exiting\n";
 #Report the status of a file
 # 0 = No ancestor has a mod time > this file's mod time
 # 1 = An ancestor has a mod time > this file's mod time
-sub relies_status {
+sub has_young_ancestors {
 
   my $file = shift;
   my $status = 0;
@@ -181,11 +187,11 @@ sub last_modified {
 
   my $file = shift;
   my $modTime;
-  my $gitModified = &git_modified($file);
+  my $hasBeenModified = &has_been_modified($file);
 
   #If there are no local modifications, use the
   # git commit timestamp
-  if (! $gitModified) {
+  if (! $hasBeenModified) {
 
     my $gitTime = `git log -1 --format="%ad" --date=iso $file`;
 
@@ -245,9 +251,9 @@ sub print_parents {
   my @antecessors = $full ? &ancestors($child) : @parents;
 
   &colourise($child);
-  say " relies on:";
+  print " relies on\n";
   foreach my $antecessor (@antecessors) {
-    print "\t";
+    print "   ";
     &colourise($antecessor);
     say "\t";
   }
@@ -255,12 +261,12 @@ sub print_parents {
 }
 
 #Get the git modification status of a file
-sub git_modified {
+sub has_been_modified {
 
   my $file = shift;
   my $gitStatus = `git status -s $file`;
-  my $gitModified = $gitStatus eq "" ? 0 : 1;
-  return $gitModified;
+  my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
+  return $hasBeenModified;
 
 }
 
@@ -268,11 +274,11 @@ sub git_modified {
 sub colourise { 
 
   my $file = shift;
-  my $reliesProblem = &relies_status($file);
+  my $hasYoungAncestors = &has_young_ancestors($file);
 
   #Check for modifications to this file or ancestors
-  my $filesModified = &git_modified($file);
-  $filesModified += &git_modified($_) for &ancestors($file);
+  my $selfOrAncestorsModified = &has_been_modified($file);
+  $selfOrAncestorsModified += &has_been_modified($_) for &ancestors($file);
 
   # Green = no local modifications in file/ancestory, no reliance problems
   # Yellow = local modifications in file/ancestory, no reliance problems
@@ -280,15 +286,15 @@ sub colourise {
   my $colour;
   
   #Red if there are reliance problems
-  if ($reliesProblem) {
+  if ($hasYoungAncestors) {
     $colour = 'red';
 
   #Yellow if there are local modifications but no reliance problems
-  } elsif ((not $reliesProblem) and $filesModified) {
+  } elsif ((not $hasYoungAncestors) and $selfOrAncestorsModified) {
     $colour = 'yellow';
 
   #Green if there are no local modifications and no reliance problems
-  } elsif ((not $reliesProblem) and (not $filesModified)) {
+  } elsif ((not $hasYoungAncestors) and (not $selfOrAncestorsModified)) {
     $colour = 'green';
 
   #If there are reliance problems but no file modifications, something
@@ -401,13 +407,4 @@ sub write_reliances {
   }
   close RELIES;
 
-}
-
-#Format DateTime objects as ISO8601 with time zone
-#From https://movieos.org/blog/2006/perl-datetime-iso8601/
-sub DateTime::iso8601_with_tz {
-  my $self = shift;
-  my $val = $self->strftime('%FT%T%z');
-  $val =~ s/(\d\d)$/:$1/;
-  return $val;
 }
