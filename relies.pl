@@ -53,9 +53,8 @@ my @children = @ARGV;
 # in-place edits easier
 my %reliances;
 
-#Hash storing safe times
-# File -> Safe time (ISO8601)
-my %safeTime;
+#Hash storing safe values
+my %isSafe;
 
 #Safeing
 if (@safe || @unsafe) {
@@ -77,12 +76,10 @@ if (@safe || @unsafe) {
   }
 
   #Make safe
-  my $now = DateTime->now(time_zone => 'local');
-  $now->set_formatter($ISO8601Formatter);
-  $safeTime{$_} = $now for @safe;
+  $isSafe{$_} = 1 for @safe;
 
   #Make unsafe
-  $safeTime{$_} = "" for @unsafe;
+  $isSafe{$_} = 0 for @unsafe;
 
   #Write to file
   &write_reliances;
@@ -167,8 +164,6 @@ sub young_ancestors {
 #      Timestamp for last git commit referencing that file
 #    If there are local modifications to the file:
 #      Timestamp for last filesystem modification
-#    If file has been safed and safed time is > last modified time:
-#      Safe time
 sub last_modified {
 
   my $file = shift;
@@ -197,12 +192,6 @@ sub last_modified {
   
   }
 
-  #If the file has been safed and the safe time > the mod time
-  # that would be used otherwise, use the safe time
-  if ($safeTime{$file}) {
-    $modTime = $safeTime{$file} if $safeTime{$file} > $modTime;
-  }
-
   $modTime->set_formatter($ISO8601Formatter);
   return $modTime;
 
@@ -229,6 +218,10 @@ sub ancestors {
 sub print_parents {
 
   my $child = shift;
+
+  #Skip if child is safe and full has not been requested
+  return if $isSafe{$child} and not $full;
+
   my @parents = keys %{$reliances{$child}};
   return if @parents == 0;
 
@@ -236,11 +229,11 @@ sub print_parents {
   # to print
   my @antecessors = $full ? &ancestors($child) : @parents;
 
-  &colourise($child);
+  &print_colourised($child);
   print " relies on\n";
   foreach my $antecessor (@antecessors) {
     print "   ";
-    &colourise($antecessor);
+    &print_colourised($antecessor);
     say "\t";
   }
 
@@ -257,7 +250,7 @@ sub has_been_modified {
 }
 
 #Print a file, colourised by status
-sub colourise { 
+sub print_colourised { 
 
   my $file = shift;
   my $hasYoungAncestors = scalar &young_ancestors($file);
@@ -267,12 +260,17 @@ sub colourise {
   $selfOrAncestorsModified += &has_been_modified($_) for &ancestors($file);
 
   # Green = no local modifications in file/ancestory, no reliance problems
+  # Bold blue = safed
   # Yellow = local modifications in file/ancestory, no reliance problems
   # Red = reliance problems
   my $colour;
   
+  #Bold blue if safed
+  if ($isSafe{$file}) {
+    $colour = 'bold blue';
+
   #Red if there are reliance problems
-  if ($hasYoungAncestors) {
+  } elsif ($hasYoungAncestors) {
     $colour = 'red';
 
   #Yellow if there are local modifications but no reliance problems
@@ -327,10 +325,7 @@ sub read_reliances {
     chomp;
     my @row = split(/\t/, $_);
     my $child = shift(@row);
-    my $safeTime = shift(@row);
-    unless ($safeTime eq "") {
-      $safeTime{$child} = DateTime::Format::ISO8601->parse_datetime($safeTime);
-    }
+    $isSafe{$child} = shift(@row);
     %{$reliances{$child}} = map { $_ => 1 } @row;
   }
   close RELIES;
@@ -377,17 +372,12 @@ sub write_reliances {
   open RELIES, ">", $reliesFile;
   foreach my $child (keys %reliances) {
 
-    #Get and format safe time, if it exists
-    my $safeTime;
-    if ($safeTime{$child}) {
-      $safeTime = $safeTime{$child};
-      $safeTime->set_formatter($ISO8601Formatter);
-    } else {
-      $safeTime = "";
-    }
+    #If there is no safe value for this child,
+    # set to 0
+    my $isSafe = exists $isSafe{$child} ? $isSafe{$child} : 0;
 
     my $parents = join("\t", keys(%{$reliances{$child}}));
-    say RELIES $child . "\t" . $safeTime . "\t" . $parents;
+    say RELIES $child . "\t" . $isSafe . "\t" . $parents;
   
   }
   close RELIES;
