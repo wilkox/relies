@@ -151,6 +151,7 @@ sub young_ancestors {
   my @youngAncestors;
 
   foreach my $ancestor (@ancestors) {
+    next if $isSafe{$ancestor};
     my $ancestorModTime = &last_modified($ancestor);
     my $compare = DateTime->compare($ancestorModTime, $modTime);
     push(@youngAncestors, $ancestor) if $compare == 1;
@@ -223,7 +224,6 @@ sub print_reliances {
   return if $isSafe{$child} and not $full;
 
   my @parents = keys %{$reliances{$child}};
-  return if @parents == 0;
 
   #Choose the appropriate subset of antecessors
   # to print
@@ -238,6 +238,9 @@ sub print_reliances {
 
     @antecessors = &young_ancestors($child);
   }
+
+  #If there are not antecessors, don't print anything
+  return if @antecessors == 0;
 
   &print_colourised($child);
   print " relies on\n";
@@ -266,29 +269,33 @@ sub print_colourised {
   my $hasYoungAncestors = scalar &young_ancestors($file);
 
   #Check for modifications to this file or ancestors
-  my $selfOrAncestorsModified = &has_been_modified($file);
-  $selfOrAncestorsModified += &has_been_modified($_) for &ancestors($file);
+  my $hasBeenModified = &has_been_modified($file);
 
-  # Green = no local modifications in file/ancestory, no reliance problems
-  # Bold blue = safed
-  # Yellow = local modifications in file/ancestory, no reliance problems
+  # Green = no modifications in file, no reliance problems
+  # Blue = safed and no modifications
+  # Magenta = safed with modifications
+  # Yellow = modifications in file, no reliance problems
   # Red = reliance problems
   my $colour;
   
-  #Bold blue if safed
-  if ($isSafe{$file}) {
-    $colour = 'bold blue';
+  #Bold blue if safed and no modifications
+  if ($isSafe{$file} and not $hasBeenModified) {
+    $colour = 'blue';
+
+  #Magenta if safed and modifications
+  } elsif ($isSafe{$file} and $hasBeenModified) {
+    $colour = 'magenta';
 
   #Red if there are reliance problems
   } elsif ($hasYoungAncestors) {
     $colour = 'red';
 
   #Yellow if there are local modifications but no reliance problems
-  } elsif ((not $hasYoungAncestors) and $selfOrAncestorsModified) {
+  } elsif ((not $hasYoungAncestors) and $hasBeenModified) {
     $colour = 'yellow';
 
   #Green if there are no local modifications and no reliance problems
-  } elsif ((not $hasYoungAncestors) and (not $selfOrAncestorsModified)) {
+  } elsif ((not $hasYoungAncestors) and (not $hasBeenModified)) {
     $colour = 'green';
 
   #If there are reliance problems but no file modifications, something
