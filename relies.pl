@@ -128,7 +128,7 @@ if (@safe || @unsafe) {
   &read_reliances;
 
   #Describe parents for children
-  &print_parents($_) for @children;
+  &print_reliances($_) for @children;
 
   #Done
   exit;
@@ -215,7 +215,7 @@ sub ancestors {
 }
 
 #Print reliances
-sub print_parents {
+sub print_reliances {
 
   my $child = shift;
 
@@ -227,7 +227,17 @@ sub print_parents {
 
   #Choose the appropriate subset of antecessors
   # to print
-  my @antecessors = $full ? &ancestors($child) : @parents;
+  my @antecessors;
+  #If the full option was given, print all ancestors
+  if ($full) {
+    @antecessors = &ancestors($child);
+  
+  #If the full option was not given, print any problematic
+  # ancestors
+  } else {
+
+    @antecessors = &young_ancestors($child);
+  }
 
   &print_colourised($child);
   print " relies on\n";
