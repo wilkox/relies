@@ -47,6 +47,11 @@ GetOptions (
 #Mop any remaining arguments into @children
 my @children = @ARGV;
 
+#If no children given or './' or '.' given, glob the current directory
+if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
+  @children = glob('./*');
+}
+
 #Hash storing reliances
 # Structure is simple: %reliances{Child}{Parent}
 # We use hash for parents instead of array because it makes
