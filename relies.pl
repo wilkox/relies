@@ -166,9 +166,6 @@ sub young_ancestors {
     my $compare = DateTime->compare($ancestorModTime, $modTime);
     push(@youngAncestors, $ancestor) if $compare == 1;
   }
-  say "$_ is a young ancestor of $file" for @youngAncestors;
-  say "$_ last modified ", &last_modified($_) for @youngAncestors;
-  say "$file last modified ", &last_modified($file) if @youngAncestors;
   return @youngAncestors;
 }
 
@@ -211,8 +208,7 @@ sub last_modified {
   #If the file has been safed and the safe time > the mod time
   # that would be used otherwise, use the safe time
   if ($safeTime{$file}) {
-    my $safeTime = DateTime::Format::ISO8601->parse_datetime($safeTime{$file});
-    $modTime = $safeTime if $safeTime > $modTime;
+    $modTime = $safeTime{$file} if $safeTime{$file} > $modTime;
   }
 
   $modTime->set_formatter($ISO8601Formatter);
@@ -286,7 +282,6 @@ sub colourise {
   #Red if there are reliance problems
   if ($reliesProblem) {
     $colour = 'red';
-    say "Set $file to red because reliesProblem is $reliesProblem";
 
   #Yellow if there are local modifications but no reliance problems
   } elsif ((not $reliesProblem) and $filesModified) {
