@@ -14,6 +14,7 @@ use File::Slurp;
 use DateTime::Format::ISO8601;
 use DateTime::Format::Strptime;
 use File::Spec;
+use Graph::Easy;
 $|++;
 
 #Formatter to write ISO8601 timestamps
@@ -44,7 +45,7 @@ my @bereaved;
 my $full;
 my @safe;
 my @unsafe;
-my @whence;
+my $whither;
 
 GetOptions (
 
@@ -53,7 +54,7 @@ GetOptions (
   "off=s{,}" => \@bereaved,
   "safe=s{,}" => \@safe,
   "unsafe=s{,}" => \@unsafe,
-  "whence=s{,}" => \@whence,
+  "whither=s" => \$whither,
 
   #Flags
   "full" => \$full
@@ -74,7 +75,7 @@ if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
 @bereaved = map { &to_git_path($_) } (@bereaved);
 @safe = map { &to_git_path($_) } (@safe);
 @unsafe = map { &to_git_path($_) } (@unsafe);
-@whence = map { &to_git_path($_) } (@whence);
+$whither = &to_git_path($whither);
 
 #######################################
 ###                                 ###
@@ -158,7 +159,7 @@ package Node {
 
   }
 
-  #All ancestors for a child
+  #All ancestors of a node
   #TODO cache (careful!)
   sub ancestors {
 
@@ -166,7 +167,6 @@ package Node {
     my %ancestors;
 
     foreach my $parentGitPath (@{$self->parents}) {
-      die unless exists $node{$parentGitPath};
       my $parent = $node{$parentGitPath};
       $ancestors{$parentGitPath}++;
       $ancestors{$_}++ for @{$node{$parentGitPath}->ancestors};
@@ -174,6 +174,22 @@ package Node {
 
     return [ keys(%ancestors) ];
 
+  }
+
+  #All descendants of a node
+  sub descendants {
+
+    my $self = shift;
+    my %descendants;
+
+    foreach my $childGitPath (@{$self->children}) {
+      my $child = $node{$childGitPath};
+      $descendants{$childGitPath}++;
+      $descendants{$_}++ for @{$node{$childGitPath}->children};
+    }
+
+    return [ keys(%descendants) ];
+  
   }
 
   #Ancestors with a mod time > than this file's mod time
@@ -192,6 +208,22 @@ package Node {
       push(@youngAncestors, $ancestor) if $compare == 1;
     }
     return [ @youngAncestors ];
+  }
+
+  #All children of a node
+  #TODO cache
+  sub children {
+  
+    my $self = shift;
+    my %children;
+
+    foreach my $potentialChild (keys %node) {
+      my %actualParents = map { $_ => 1 } @{$node{$potentialChild}->parents};
+      $children{$potentialChild}++ if exists $actualParents{$self->git_path};
+    }
+
+    return [ keys %children ];
+  
   }
 
   #Convenience
@@ -293,7 +325,7 @@ package Node {
 if (@safe || @unsafe) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || @whence;
+  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || $whither;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -324,7 +356,7 @@ if (@safe || @unsafe) {
 } elsif (@parents || @bereaved) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @whence;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || $whither;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -341,10 +373,29 @@ if (@safe || @unsafe) {
   say "OK";
   exit;
 
-#Explain whenceforth this file came
-} elsif (@whence) {
+#List descendants
+} elsif ($whither) {
 
-  say "Called whence on $_" for @whence;
+  #Incompatible options
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved;
+  warn "WARNING: ignoring --full\n" if $full;
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Generate list of unique edges in descendant graph
+  my %edges;
+  foreach my $descendant ($whither, @{$node{$whither}->descendants}) {
+    foreach my $child (@{$node{$descendant}->children}) {
+      $edges{$descendant, $child} = [ $descendant, $child ];
+    }
+  }
+
+  #Construct Graph::Easy graph
+  my $graph = Graph::Easy->new();
+  $graph->add_edge(@{$_}[0], @{$_}[1]) for values %edges;
+
+  print $graph->as_ascii();
 
   #Done
   exit;
