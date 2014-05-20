@@ -44,6 +44,7 @@ my @bereaved;
 my $full;
 my @safe;
 my @unsafe;
+my @whence;
 
 GetOptions (
 
@@ -52,6 +53,7 @@ GetOptions (
   "off=s{,}" => \@bereaved,
   "safe=s{,}" => \@safe,
   "unsafe=s{,}" => \@unsafe,
+  "whence=s{,}" => \@whence,
 
   #Flags
   "full" => \$full
@@ -72,6 +74,7 @@ if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
 @bereaved = map { &to_git_path($_) } (@bereaved);
 @safe = map { &to_git_path($_) } (@safe);
 @unsafe = map { &to_git_path($_) } (@unsafe);
+@whence = map { &to_git_path($_) } (@whence);
 
 #######################################
 ###                                 ###
@@ -156,6 +159,7 @@ package Node {
   }
 
   #All ancestors for a child
+  #TODO cache (careful!)
   sub ancestors {
 
     my $self = shift;
@@ -173,6 +177,7 @@ package Node {
   }
 
   #Ancestors with a mod time > than this file's mod time
+  #TODO cache
   sub young_ancestors {
 
     my $self = shift;
@@ -233,7 +238,7 @@ package Node {
       die "ERROR: Something has gone horribly wrong";
     }
 
-    print $self->git_path;
+    print $self->relative_path;
     print color 'reset';
 
   }
@@ -288,7 +293,7 @@ package Node {
 if (@safe || @unsafe) {
 
   #Incompatible options
-  die "ERROR: Can't combine --safe or --unsafe with --on or --off\n" if @parents || @bereaved;
+  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || @whence;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -318,8 +323,8 @@ if (@safe || @unsafe) {
 # add/remove as necessary
 } elsif (@parents || @bereaved) {
 
-  #Warn about flags being ignored
-  die "ERROR: Can't combine --safe or --unsafe with --on or --off\n" if @safe || @unsafe;
+  #Incompatible options
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @whence;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -334,6 +339,14 @@ if (@safe || @unsafe) {
 
   #Done
   say "OK";
+  exit;
+
+#Explain whenceforth this file came
+} elsif (@whence) {
+
+  say "Called whence on $_" for @whence;
+
+  #Done
   exit;
 
 #If no options were provided, give information about
