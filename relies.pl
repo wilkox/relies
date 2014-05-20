@@ -13,7 +13,6 @@ use Cwd 'abs_path';
 use File::Slurp;
 use DateTime::Format::ISO8601;
 use DateTime::Format::Strptime;
-use Term::ANSIColor;
 $|++;
 
 #Formatter to write ISO8601 timestamps
@@ -46,6 +45,7 @@ my %node;
 package Node {
 
   use Moose;
+  use Term::ANSIColor;
 
   #The path passed to relies
   has 'git_path', is => 'ro', isa => 'Str';
@@ -57,6 +57,7 @@ package Node {
   has 'safe', is => 'ro', isa => 'Int';
 
   #Get the git modification status of a file
+  #TODO redefine as an attribute to prevent recalculation
   sub has_been_modified {
 
     my $self = shift;
@@ -141,6 +142,62 @@ package Node {
     return [ @youngAncestors ];
   }
 
+  #Convenience
+  #TODO redefine as attribute to prevent recalculation
+  sub has_young_ancestors {
+    my $self = shift;
+    return scalar @{$self->young_ancestors};
+  }
+
+  #Print a file, colourised by status
+  sub printf { 
+
+    my $self = shift;
+    say "=>Beginning printf for ", $self->git_path;
+    say "HasYoungAncestors value is ", $self->has_young_ancestors;
+
+    # Green = no modifications in file, no reliance problems
+    # Blue = safed and no modifications
+    # Magenta = safed with modifications
+    # Yellow = modifications in file, no reliance problems
+    # Red = reliance problems
+    
+    #Bold blue if safed and no modifications
+    if ($self->safe and not $self->has_been_modified) {
+      say "Colour set to blue";
+      print color 'blue';
+
+    #Magenta if safed and modifications
+    } elsif ($self->safe and $self->has_been_modified) {
+      say "Colour set to magenta";
+      print color 'magenta';
+
+    #Red if there are reliance problems
+    } elsif ($self->has_young_ancestors) {
+      say "Colour set to red";
+      print color 'red';
+
+    #Yellow if there are local modifications but no reliance problems
+    } elsif ((not $self->has_young_ancestors) and $self->has_been_modified) {
+      say "Colour set to yellow",
+      print color 'yellow';
+
+    #Green if there are no local modifications and no reliance problems
+    } elsif ((not $self->has_young_ancestors) and (not $self->has_been_modified)) {
+      say "Colour set to green";
+      print color 'green';
+
+    #If there are reliance problems but no file modifications, something
+    # has gone horribly wrong
+    } else {
+      die "ERROR: Something has gone horribly wrong";
+    }
+
+    print $self->git_path;
+    print color 'reset';
+
+  }
+
 }
 
 
@@ -167,6 +224,10 @@ foreach (values %node) {
 
   say "My young ancestors are:";
   say for @{$_->young_ancestors};
+
+  say "Here I am nicely formatted";
+  $_->printf;
+  print "\n";
 
   say "Thanks for listening";
 
@@ -294,11 +355,11 @@ if (@safe || @unsafe) {
 }
 
 die "ERROR: Somehow escaped the main loop without exiting\n";
-###########################################################
-###                                                     ###
-### END OF CLASS DEFINITIONS - BEGINNING OF SUBROUTINES ###
-###                                                     ###
-###########################################################
+###################################################
+###                                             ###
+### END OF MAIN LOOP - BEGINNING OF SUBROUTINES ###
+###                                             ###
+###################################################
 
 #Print reliances
 sub print_reliances {
@@ -327,61 +388,13 @@ sub print_reliances {
   #If there are not antecessors, don't print anything
   return if @antecessors == 0;
 
-  &print_colourised($child);
+  &printf($child);
   print " relies on\n";
   foreach my $antecessor (@antecessors) {
     print "   ";
-    &print_colourised($antecessor);
+    &printf($antecessor);
     say "\t";
   }
-
-}
-
-#Print a file, colourised by status
-sub print_colourised { 
-
-  my $file = shift;
-  my $hasYoungAncestors = scalar &young_ancestors($file);
-
-  #Check for modifications to this file or ancestors
-  my $hasBeenModified = &has_been_modified($file);
-
-  # Green = no modifications in file, no reliance problems
-  # Blue = safed and no modifications
-  # Magenta = safed with modifications
-  # Yellow = modifications in file, no reliance problems
-  # Red = reliance problems
-  my $colour;
-  
-  #Bold blue if safed and no modifications
-  if ($isSafe{$file} and not $hasBeenModified) {
-    $colour = 'blue';
-
-  #Magenta if safed and modifications
-  } elsif ($isSafe{$file} and $hasBeenModified) {
-    $colour = 'magenta';
-
-  #Red if there are reliance problems
-  } elsif ($hasYoungAncestors) {
-    $colour = 'red';
-
-  #Yellow if there are local modifications but no reliance problems
-  } elsif ((not $hasYoungAncestors) and $hasBeenModified) {
-    $colour = 'yellow';
-
-  #Green if there are no local modifications and no reliance problems
-  } elsif ((not $hasYoungAncestors) and (not $hasBeenModified)) {
-    $colour = 'green';
-
-  #If there are reliance problems but no file modifications, something
-  # has gone horribly wrong
-  } else {
-    die "ERROR: Something has gone horribly wrong";
-  }
-
-  print color $colour;
-  print $file;
-  print color 'reset';
 
 }
 
