@@ -447,7 +447,7 @@ if ($precommit) {
 
   #Construct Graph::Easy graph
   my $graph = Graph::Easy->new();
-  $graph->add_edge(@{$_}[0], @{$_}[1]) for values %edges;
+  $graph->add_edge(@{$_}[1], @{$_}[0]) for values %edges;
 
   print $graph->as_ascii();
 
