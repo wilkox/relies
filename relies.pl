@@ -9,7 +9,7 @@
 use Modern::Perl 2013;
 use autodie;
 use Getopt::Long;
-use Cwd 'abs_path';
+use Cwd::Ext 'abs_path_nd';
 use File::Slurp;
 use DateTime::Format::ISO8601;
 use DateTime::Format::Strptime;
@@ -481,16 +481,17 @@ sub validate_file {
   my ($file) = @_;
 
   #Get the absolute path
-  my $absPath = abs_path($file);
+  my $absPath = abs_path_nd($file);
 
   #Ensure the file exists
-  die "ERROR: Can't find file $file\n" unless -e $absPath;
+  die "ERROR: Can't find file $file\n" unless -e $absPath or -l $absPath;
 
   #Ensure the file is a file
-  die "ERROR: $file is not a file\n" unless -f $absPath;
+  die "ERROR: $file is not a file\n" unless -f $absPath or -l $absPath;
 
   #Ensure git knows about the file 
-  die "ERROR: Git doesn't seem to know about $file\nRun 'git add $file' first\n" unless `git ls-files $absPath --error-unmatch 2> /dev/null`;
+  my $relativePath = File::Spec->abs2rel(abs_path_nd($file));
+  die "ERROR: Git doesn't seem to know about $file\nRun 'git add $file' first\n" unless `git ls-files $relativePath --error-unmatch 2> /dev/null`;
 
 }
 
@@ -569,7 +570,7 @@ sub to_git_path {
 
   my $filePath = shift;
   &validate_file($filePath);
-  my $relativePath = File::Spec->abs2rel(abs_path($filePath), $gitRoot);
+  my $relativePath = File::Spec->abs2rel(abs_path_nd($filePath), $gitRoot);
   return $relativePath;
 
 }
