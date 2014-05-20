@@ -77,10 +77,10 @@ package Node {
   has 'git_path', is => 'ro', isa => 'Str';
 
   #Parents of this file (i.e. reliances explicitly set by the user)
-  has 'parents', is => 'ro', isa => 'ArrayRef';
+  has 'parents', is => 'rw', isa => 'ArrayRef';
 
   #Safe flag
-  has 'safe', is => 'ro', isa => 'Int';
+  has 'safe', is => 'rw', isa => 'Int';
 
   #Get the git modification status of a file
   #TODO redefine as an attribute to prevent recalculation
@@ -257,57 +257,11 @@ package Node {
 
 }
 
-
-say "Beginning OO tests";
-
-say "Reading reliances...";
-&read_reliances;
-
-foreach (values %node) {
-
-  say "I am ", $_->git_path;
-
-  say "I've been modified" if $_->has_been_modified;
-
-  say "Last modified time is ", $_->last_modified;
-
-  say "My safe value is ", $_->safe;
-
-  say "My parents are:";
-  say for @{$_->parents};
-
-  say "My ancestors are:";
-  say for @{$_->ancestors};
-
-  say "My young ancestors are:";
-  say for @{$_->young_ancestors};
-
-  say "Here I am nicely formatted";
-  $_->printf;
-  print "\n";
-
-  say "Here come my reliances";
-  $_->printf_reliances;
-
-  say "Thanks for listening";
-
-}
-
-exit;
-
 ###############################
 ###                         ###
 ###  BEGINNING OF MAIN LOOP ###
 ###                         ###
 ###############################
-#Hash storing reliances
-# Structure is simple: %reliances{Child}{Parent}
-# We use hash for parents instead of array because it makes
-# in-place edits easier
-my %reliances;
-
-#Hash storing safe values
-my %isSafe;
 
 #Safeing
 if (@safe || @unsafe) {
@@ -315,6 +269,8 @@ if (@safe || @unsafe) {
   #Incompatible options
   die "ERROR: Can't combine --safe or --unsafe with --on or --off\n" if @parents || @bereaved;
   warn "WARNING: ignoring --full\n" if $full;
+
+  #TODO need to convert passed paths to git paths
 
   #Validate files
   &validate_file($_) for (@safe, @unsafe);
@@ -325,14 +281,14 @@ if (@safe || @unsafe) {
   #Check that all the safe/unsafe files are actually
   # known to relies
   foreach (@safe, @unsafe) {
-    die "ERROR: $_ does not have any reliances\n" unless exists $reliances{$_};
+    die "ERROR: $_ does not have any reliances\n" unless exists $node{$_};
   }
 
   #Make safe
-  $isSafe{$_} = 1 for @safe;
+  $node{$_}->safe = 1 for @safe;
 
   #Make unsafe
-  $isSafe{$_} = 0 for @unsafe;
+  $node{$_}->safe = 0 for @unsafe;
 
   #Write to file
   &write_reliances;
@@ -378,7 +334,7 @@ if (@safe || @unsafe) {
   &read_reliances;
 
   #Describe parents for children
-  &printf_reliances($_) for @children;
+  $node{$_}->printf_reliances for @children;
 
   #Done
   exit;
@@ -438,12 +394,12 @@ sub add_parents {
 
   #Check for loops
   foreach my $parent (@parents) {
-    my %ancestors = map { $_ => 1 } &ancestors($parent);
+    my %ancestors = map { $_ => 1 } @{$node{$parent}->ancestors};
     next unless exists $ancestors{$child};
     die "ERROR: $child can't rely on $parent as this will create a loop\n";
   }
 
-  $reliances{$child}{$_}++ for @parents;
+  push(@{$node{$child}}->parents, $_) for @parents;
 
 }
 
@@ -451,7 +407,9 @@ sub add_parents {
 sub remove_parents {
 
   (my $child, my $bereaved) = @_;
-  delete($reliances{$child}{$_}) for @bereaved;
+  my %oldParents = map { $_ => 1 } @{$node{$child}->parents};
+  delete $oldParents{$_} for @bereaved;
+  @{$node{$child}->parents} = keys %oldParents;
 
 }
 
@@ -459,14 +417,10 @@ sub remove_parents {
 sub write_reliances { 
 
   open RELIES, ">", $reliesFile;
-  foreach my $child (keys %reliances) {
+  foreach my $node (keys %node) {
 
-    #If there is no safe value for this child,
-    # set to 0
-    my $isSafe = exists $isSafe{$child} ? $isSafe{$child} : 0;
-
-    my $parents = join("\t", keys(%{$reliances{$child}}));
-    say RELIES $child . "\t" . $isSafe . "\t" . $parents;
+    my $parents = join("\t", @{$node{$node}->parents});
+    say RELIES $node->git_path . "\t" . $node->safe . "\t" . $parents;
   
   }
   close RELIES;
