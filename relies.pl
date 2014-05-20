@@ -498,7 +498,7 @@ sub validate_file {
 sub read_reliances { 
 
   if (! -e $reliesFile) {
-    say "No .relies for this repository - type 'relies init'"; #TODO implement 'relies init', needs to create .relies and install git hooks
+    say "No .relies for this repository - type 'touch .relies' to create one";
     return;
   }
 
