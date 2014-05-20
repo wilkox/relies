@@ -27,7 +27,6 @@ sub DateTime::iso8601_with_tz {
   return $val;
 }
 
-
 #Get the git repository root path
 my $gitRoot = `git rev-parse --show-toplevel` or die "";
 chomp $gitRoot;
@@ -42,32 +41,37 @@ my %node;
 #Parse command line options
 my @parents;
 my @bereaved;
+my @children;
 my $full;
 my @safe;
 my @unsafe;
 my $whither;
+my $whence;
 
-GetOptions (
-
-  #Passed files
-  "on=s{,}" => \@parents,
-  "off=s{,}" => \@bereaved,
-  "safe=s{,}" => \@safe,
-  "unsafe=s{,}" => \@unsafe,
-  "whither=s" => \$whither,
-
-  #Flags
-  "full" => \$full
-);
-
-#Mop any remaining arguments into @children
-my @children = @ARGV;
-
-#If no children given or './' or '.' given, glob the current directory
-if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
+#If no arguments given or './' or '.' given, glob the current directory as children
+if (@ARGV == 0 or $ARGV[0] eq '.' or $ARGV[0] eq './') {
   @children = glob('./*');
   @children = grep { !-d $_ } @children;
+
+#Otherwise process command line options
+} else {
+  GetOptions (
+
+    #Passed files
+    "on=s{,}" => \@parents,
+    "off=s{,}" => \@bereaved,
+    "safe=s{,}" => \@safe,
+    "unsafe=s{,}" => \@unsafe,
+    "whither|descendants=s" => \$whither,
+    "whence|ancestors=s" => \$whence,
+
+    #Flags
+    "full" => \$full
+  );
 }
+
+#Mop any remaining arguments into @children
+@children = @ARGV;
 
 #Validate passed files and convert to git paths
 @children = map { &to_git_path($_) } (@children);
@@ -75,7 +79,8 @@ if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
 @bereaved = map { &to_git_path($_) } (@bereaved);
 @safe = map { &to_git_path($_) } (@safe);
 @unsafe = map { &to_git_path($_) } (@unsafe);
-$whither = &to_git_path($whither);
+$whither = &to_git_path($whither) if $whither;
+$whence = &to_git_path($whence) if $whence;
 
 #######################################
 ###                                 ###
@@ -325,7 +330,8 @@ package Node {
 if (@safe || @unsafe) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || $whither;
+  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || $whither || $whence;
+  warn "WARNING: ignoring $_\n" for @children;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -356,7 +362,7 @@ if (@safe || @unsafe) {
 } elsif (@parents || @bereaved) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || $whither;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || $whither || $whence;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -373,11 +379,12 @@ if (@safe || @unsafe) {
   say "OK";
   exit;
 
-#List descendants
+#Graph descendants
 } elsif ($whither) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whence;
+  warn "WARNING: ignoring $_\n" for @children;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -389,6 +396,44 @@ if (@safe || @unsafe) {
     foreach my $child (@{$node{$descendant}->children}) {
       $edges{$descendant, $child} = [ $descendant, $child ];
     }
+  }
+
+  if (keys %edges == 0) {
+    say "$whither has no descendants";
+    exit;
+  }
+
+  #Construct Graph::Easy graph
+  my $graph = Graph::Easy->new();
+  $graph->add_edge(@{$_}[0], @{$_}[1]) for values %edges;
+
+  print $graph->as_ascii();
+
+  #Done
+  exit;
+
+#Graph ancestors
+} elsif ($whence) {
+
+  #Incompatible options
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whither;
+  warn "WARNING: ignoring $_\n" for @children;
+  warn "WARNING: ignoring --full\n" if $full;
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Generate list of unique edges in ancestor graph
+  my %edges;
+  foreach my $ancestor ($whence, @{$node{$whence}->ancestors}) {
+    foreach my $parent (@{$node{$ancestor}->parents}) {
+      $edges{$ancestor, $parent} = [ $ancestor, $parent ];
+    }
+  }
+
+  if (keys %edges == 0) {
+    say "$whence has no ancestors";
+    exit;
   }
 
   #Construct Graph::Easy graph
