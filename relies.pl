@@ -13,6 +13,7 @@ use Cwd 'abs_path';
 use File::Slurp;
 use DateTime::Format::ISO8601;
 use DateTime::Format::Strptime;
+use File::Spec;
 $|++;
 
 #Formatter to write ISO8601 timestamps
@@ -27,10 +28,10 @@ sub DateTime::iso8601_with_tz {
 
 
 #Get the git repository root path
-my $gitroot = `git rev-parse --show-toplevel` or die "";
-chomp $gitroot;
+my $gitRoot = `git rev-parse --show-toplevel` or die "";
+chomp $gitRoot;
 
-my $reliesFile = $gitroot . "/.relies";
+my $reliesFile = $gitRoot . "/.relies";
 
 #Store for Node objects
 # Key: passed path
@@ -46,22 +47,31 @@ my @unsafe;
 
 GetOptions (
 
+  #Passed files
   "on=s{,}" => \@parents,
   "off=s{,}" => \@bereaved,
-  "full" => \$full,
   "safe=s{,}" => \@safe,
-  "unsafe=s{,}" => \@unsafe
+  "unsafe=s{,}" => \@unsafe,
 
+  #Flags
+  "full" => \$full
 );
 
 #Mop any remaining arguments into @children
 my @children = @ARGV;
 
 #If no children given or './' or '.' given, glob the current directory
-#TODO need to implement this with conversion to git paths
-#if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
-#@children = glob('./*');
-#}
+if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
+  @children = glob('./*');
+  @children = grep { !-d $_ } @children;
+}
+
+#Validate passed files and convert to git paths
+@children = map { &to_git_path($_) } (@children);
+@parents = map { &to_git_path($_) } (@parents);
+@bereaved = map { &to_git_path($_) } (@bereaved);
+@safe = map { &to_git_path($_) } (@safe);
+@unsafe = map { &to_git_path($_) } (@unsafe);
 
 #######################################
 ###                                 ###
@@ -271,11 +281,6 @@ if (@safe || @unsafe) {
   die "ERROR: Can't combine --safe or --unsafe with --on or --off\n" if @parents || @bereaved;
   warn "WARNING: ignoring --full\n" if $full;
 
-  #TODO need to convert passed paths to git paths
-
-  #Validate files
-  &validate_file($_) for (@safe, @unsafe);
-
   #Read reliances store into memory
   &read_reliances;
 
@@ -307,9 +312,6 @@ if (@safe || @unsafe) {
   die "ERROR: Can't combine --safe or --unsafe with --on or --off\n" if @safe || @unsafe;
   warn "WARNING: ignoring --full\n" if $full;
 
-  #Validate files
-  &validate_file($_) for (@children, @parents, @bereaved);
-
   #Read reliances store into memory
   &read_reliances;
 
@@ -328,9 +330,6 @@ if (@safe || @unsafe) {
 # the listed child(ren)
 } else {
 
-  #Validate the files
-  &validate_file($_) for @children;
-
   #Read reliances store into memory
   &read_reliances;
 
@@ -342,7 +341,6 @@ if (@safe || @unsafe) {
 
 }
 
-die "ERROR: Somehow escaped the main loop without exiting\n";
 ###################################################
 ###                                             ###
 ### END OF MAIN LOOP - BEGINNING OF SUBROUTINES ###
@@ -435,5 +433,15 @@ sub write_reliances {
   
   }
   close RELIES;
+
+}
+
+#Convert a passed path to a git path
+sub to_git_path {
+
+  my $filePath = shift;
+  &validate_file($filePath);
+  my $relativePath = File::Spec->abs2rel(abs_path($filePath), $gitRoot);
+  return $relativePath;
 
 }
