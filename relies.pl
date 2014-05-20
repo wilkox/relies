@@ -32,6 +32,11 @@ chomp $gitroot;
 
 my $reliesFile = $gitroot . "/.relies";
 
+#Store for Node objects
+# Key: passed path
+# Value: obj
+my %node;
+
 #######################################
 ###                                 ###
 ###  BEGINNING OF CLASS DEFINITIONS ###
@@ -43,7 +48,7 @@ package Node {
   use Moose;
 
   #The path passed to relies
-  has 'passed_path', is => 'ro', isa => 'Str';
+  has 'git_path', is => 'ro', isa => 'Str';
 
   #Parents of this file (i.e. reliances explicitly set by the user)
   has 'parents', is => 'ro', isa => 'ArrayRef';
@@ -55,7 +60,7 @@ package Node {
   sub has_been_modified {
 
     my $self = shift;
-    my $fileName = $self->passed_path; #TODO fix handling of paths
+    my $fileName = $self->git_path; #TODO fix handling of paths
     my $gitStatus = `git status -s $fileName`;
     my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
     return $hasBeenModified;
@@ -73,7 +78,7 @@ package Node {
     my $self = shift;
     my $modTime;
     my $hasBeenModified = $self->has_been_modified;
-    my $fileName = $self->passed_path; #TODO fix handling of paths
+    my $fileName = $self->git_path; #TODO fix handling of paths
 
     #If there are no local modifications, use the
     # git commit timestamp
@@ -106,16 +111,34 @@ package Node {
   sub ancestors {
 
     my $self = shift;
-    say "Called ancestors on ", $self->passed_path;
     my %ancestors;
 
-    foreach my $parent (@{$self->parents}) {
-      $ancestors{$parent}++;
-      $ancestors{$_}++ for &ancestors($parent);
+    foreach my $parentGitPath (@{$self->parents}) {
+      die unless exists $node{$parentGitPath};
+      my $parent = $node{$parentGitPath};
+      $ancestors{$parentGitPath}++;
+      $ancestors{$_}++ for @{$node{$parentGitPath}->ancestors};
     }
 
     return [ keys(%ancestors) ];
 
+  }
+
+  #Ancestors with a mod time > than this file's mod time
+  sub young_ancestors {
+
+    my $self = shift;
+    my $modTime = $self->last_modified;
+    my @ancestors = @{$self->ancestors};
+    my @youngAncestors;
+
+    foreach my $ancestor (@ancestors) {
+      next if $node{$ancestor}->safe;
+      my $ancestorModTime = $node{$ancestor}->last_modified;
+      my $compare = DateTime->compare($ancestorModTime, $modTime);
+      push(@youngAncestors, $ancestor) if $compare == 1;
+    }
+    return [ @youngAncestors ];
   }
 
 }
@@ -124,21 +147,28 @@ package Node {
 say "Beginning OO tests";
 
 say "Reading reliances...";
-my @allFiles = &read_reliances;
+&read_reliances;
 
-foreach (@allFiles) {
+foreach (values %node) {
 
-  say "Passed path is ", $_->passed_path;
+  say "I am ", $_->git_path;
 
   say "I've been modified" if $_->has_been_modified;
 
   say "Last modified time is ", $_->last_modified;
+
+  say "My safe value is ", $_->safe;
 
   say "My parents are:";
   say for @{$_->parents};
 
   say "My ancestors are:";
   say for @{$_->ancestors};
+
+  say "My young ancestors are:";
+  say for @{$_->young_ancestors};
+
+  say "Thanks for listening";
 
 }
 
@@ -270,23 +300,6 @@ die "ERROR: Somehow escaped the main loop without exiting\n";
 ###                                                     ###
 ###########################################################
 
-#Return a list of ancestors with a mod time > than this file's mod time
-sub young_ancestors {
-
-  my $file = shift;
-  my $modTime = &last_modified($file);
-  my @ancestors = &ancestors($file);
-  my @youngAncestors;
-
-  foreach my $ancestor (@ancestors) {
-    next if $isSafe{$ancestor};
-    my $ancestorModTime = &last_modified($ancestor);
-    my $compare = DateTime->compare($ancestorModTime, $modTime);
-    push(@youngAncestors, $ancestor) if $compare == 1;
-  }
-  return @youngAncestors;
-}
-
 #Print reliances
 sub print_reliances {
 
@@ -400,17 +413,14 @@ sub read_reliances {
   }
 
   open RELIES, "<", $reliesFile;
-  my @children;
   while (<RELIES>) {
     chomp;
     my @row = split(/\t/, $_);
-    (my $passedPath, my $safe, my @parents) = @row;
-    my $child = Node->new( passed_path => $passedPath, safe => $safe, parents => [ @parents ]);
-    push(@children, $child);
+    (my $gitPath, my $safe, my @parents) = @row;
+    my $child = Node->new( git_path => $gitPath, safe => $safe, parents => [ @parents ]);
+    $node{$gitPath} = $child;
   }
   close RELIES;
-
-  return @children;
 
 }
 
