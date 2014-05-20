@@ -25,6 +25,7 @@ sub DateTime::iso8601_with_tz {
   return $val;
 }
 
+
 #Get the git repository root path
 my $gitroot = `git rev-parse --show-toplevel` or die "";
 chomp $gitroot;
@@ -35,6 +36,31 @@ my $reliesFile = $gitroot . "/.relies";
 # Key: passed path
 # Value: obj
 my %node;
+
+#Parse command line options
+my @parents;
+my @bereaved;
+my $full;
+my @safe;
+my @unsafe;
+
+GetOptions (
+
+  "on=s{,}" => \@parents,
+  "off=s{,}" => \@bereaved,
+  "full" => \$full,
+  "safe=s{,}" => \@safe,
+  "unsafe=s{,}" => \@unsafe
+
+);
+
+#Mop any remaining arguments into @children
+my @children = @ARGV;
+
+#If no children given or './' or '.' given, glob the current directory
+if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
+  @children = glob('./*');
+}
 
 #######################################
 ###                                 ###
@@ -153,8 +179,6 @@ package Node {
   sub printf { 
 
     my $self = shift;
-    say "=>Beginning printf for ", $self->git_path;
-    say "HasYoungAncestors value is ", $self->has_young_ancestors;
 
     # Green = no modifications in file, no reliance problems
     # Blue = safed and no modifications
@@ -164,27 +188,22 @@ package Node {
     
     #Bold blue if safed and no modifications
     if ($self->safe and not $self->has_been_modified) {
-      say "Colour set to blue";
       print color 'blue';
 
     #Magenta if safed and modifications
     } elsif ($self->safe and $self->has_been_modified) {
-      say "Colour set to magenta";
       print color 'magenta';
 
     #Red if there are reliance problems
     } elsif ($self->has_young_ancestors) {
-      say "Colour set to red";
       print color 'red';
 
     #Yellow if there are local modifications but no reliance problems
     } elsif ((not $self->has_young_ancestors) and $self->has_been_modified) {
-      say "Colour set to yellow",
       print color 'yellow';
 
     #Green if there are no local modifications and no reliance problems
     } elsif ((not $self->has_young_ancestors) and (not $self->has_been_modified)) {
-      say "Colour set to green";
       print color 'green';
 
     #If there are reliance problems but no file modifications, something
@@ -197,6 +216,44 @@ package Node {
     print color 'reset';
 
   }
+
+  #Print reliances
+  sub printf_reliances {
+
+    my $self = shift;
+
+    #Skip if child is safe and full has not been requested
+    return if $self->safe and not $full;
+
+    my @parents = @{$self->parents};
+
+    #Choose the appropriate subset of antecessors
+    # to print
+    my @antecessors;
+    #If the full option was given, print all ancestors
+    if ($full) {
+      @antecessors = @{$self->ancestors};
+    
+    #If the full option was not given, print any problematic
+    # ancestors
+    } else {
+
+      @antecessors = @{$self->young_ancestors};
+    }
+
+    #If there are not antecessors, don't print anything
+    return if @antecessors == 0;
+
+    $self->printf;
+    print " relies on\n";
+    foreach my $antecessor (@antecessors) {
+      print "   ";
+      $node{$antecessor}->printf;
+      say "\t";
+    }
+
+  }
+
 
 }
 
@@ -229,6 +286,9 @@ foreach (values %node) {
   $_->printf;
   print "\n";
 
+  say "Here come my reliances";
+  $_->printf_reliances;
+
   say "Thanks for listening";
 
 }
@@ -240,32 +300,6 @@ exit;
 ###  BEGINNING OF MAIN LOOP ###
 ###                         ###
 ###############################
-
-#Parse command line options
-my @parents;
-my @bereaved;
-my $full;
-my @safe;
-my @unsafe;
-
-GetOptions (
-
-  "on=s{,}" => \@parents,
-  "off=s{,}" => \@bereaved,
-  "full" => \$full,
-  "safe=s{,}" => \@safe,
-  "unsafe=s{,}" => \@unsafe
-
-);
-
-#Mop any remaining arguments into @children
-my @children = @ARGV;
-
-#If no children given or './' or '.' given, glob the current directory
-if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
-  @children = glob('./*');
-}
-
 #Hash storing reliances
 # Structure is simple: %reliances{Child}{Parent}
 # We use hash for parents instead of array because it makes
@@ -326,9 +360,6 @@ if (@safe || @unsafe) {
   &add_parents($_, @parents) for @children;
   &remove_parents($_, @parents) for @children;
 
-  #Clean up reliances store
-  &do_housekeeping;
-
   #Write reliances store to file
   &write_reliances;
 
@@ -347,7 +378,7 @@ if (@safe || @unsafe) {
   &read_reliances;
 
   #Describe parents for children
-  &print_reliances($_) for @children;
+  &printf_reliances($_) for @children;
 
   #Done
   exit;
@@ -361,44 +392,7 @@ die "ERROR: Somehow escaped the main loop without exiting\n";
 ###                                             ###
 ###################################################
 
-#Print reliances
-sub print_reliances {
-
-  my $child = shift;
-
-  #Skip if child is safe and full has not been requested
-  return if $isSafe{$child} and not $full;
-
-  my @parents = keys %{$reliances{$child}};
-
-  #Choose the appropriate subset of antecessors
-  # to print
-  my @antecessors;
-  #If the full option was given, print all ancestors
-  if ($full) {
-    @antecessors = &ancestors($child);
-  
-  #If the full option was not given, print any problematic
-  # ancestors
-  } else {
-
-    @antecessors = &young_ancestors($child);
-  }
-
-  #If there are not antecessors, don't print anything
-  return if @antecessors == 0;
-
-  &printf($child);
-  print " relies on\n";
-  foreach my $antecessor (@antecessors) {
-    print "   ";
-    &printf($antecessor);
-    say "\t";
-  }
-
-}
-
-#Validate files
+#Validate a file
 sub validate_file {
 
   my ($file) = @_;
@@ -458,16 +452,6 @@ sub remove_parents {
 
   (my $child, my $bereaved) = @_;
   delete($reliances{$child}{$_}) for @bereaved;
-
-}
-
-#Housekeeping on reliances hash
-sub do_housekeeping {
-
-  #Remove any children with no parents
-  foreach my $child (keys %reliances) {
-    delete $reliances{$child} if keys %{$reliances{$child}} == 0;
-  }
 
 }
 
