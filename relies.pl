@@ -416,7 +416,7 @@ if ($precommit) {
   my $graph = Graph::Easy->new();
   $graph->add_edge(@{$_}[0], @{$_}[1]) for values %edges;
 
-  print $graph->as_ascii();
+  print $graph->as_boxart();
 
   #Done
   exit;
@@ -449,7 +449,7 @@ if ($precommit) {
   my $graph = Graph::Easy->new();
   $graph->add_edge(@{$_}[1], @{$_}[0]) for values %edges;
 
-  print $graph->as_ascii();
+  print $graph->as_boxart();
 
   #Done
   exit;
