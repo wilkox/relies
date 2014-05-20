@@ -1,10 +1,10 @@
 #!/usr/bin/env perl
 
-#################
-###           ###
-###  PREAMBLE ###
-###           ###
-#################
+################
+###          ###
+### PREAMBLE ###
+###          ###
+################
 
 use Modern::Perl 2013;
 use autodie;
@@ -58,9 +58,10 @@ GetOptions (
 my @children = @ARGV;
 
 #If no children given or './' or '.' given, glob the current directory
-if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
-  @children = glob('./*');
-}
+#TODO need to implement this with conversion to git paths
+#if (@children == 0 or $children[0] eq '.' or $children[0] eq './') {
+#@children = glob('./*');
+#}
 
 #######################################
 ###                                 ###
@@ -285,10 +286,10 @@ if (@safe || @unsafe) {
   }
 
   #Make safe
-  $node{$_}->safe = 1 for @safe;
+  $node{$_}->safe(1) for @safe;
 
   #Make unsafe
-  $node{$_}->safe = 0 for @unsafe;
+  $node{$_}->safe(0) for @unsafe;
 
   #Write to file
   &write_reliances;
@@ -392,6 +393,13 @@ sub add_parents {
 
   (my $child, my @parents) = @_;
 
+  #Create nodes for child and parent files if they are new
+  foreach my $gitPath (@_) {
+    next if exists $node{$gitPath};
+    my $newNode = Node->new( git_path => $gitPath, safe => 0, parents => [ ]); #TODO git path
+    $node{$gitPath} = $newNode;
+  }
+
   #Check for loops
   foreach my $parent (@parents) {
     my %ancestors = map { $_ => 1 } @{$node{$parent}->ancestors};
@@ -399,7 +407,10 @@ sub add_parents {
     die "ERROR: $child can't rely on $parent as this will create a loop\n";
   }
 
-  push(@{$node{$child}}->parents, $_) for @parents;
+  #Join old and new parents
+  my %parents = map { $_ => 1 } @{$node{$child}->parents};
+  $parents{$_}++ for @parents;
+  $node{$child}->parents([ keys %parents ]);
 
 }
 
@@ -420,7 +431,7 @@ sub write_reliances {
   foreach my $node (keys %node) {
 
     my $parents = join("\t", @{$node{$node}->parents});
-    say RELIES $node->git_path . "\t" . $node->safe . "\t" . $parents;
+    say RELIES $node{$node}->git_path . "\t" . $node{$node}->safe . "\t" . $parents;
   
   }
   close RELIES;
