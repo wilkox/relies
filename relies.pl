@@ -1,6 +1,11 @@
 #!/usr/bin/env perl
 
-#Preamble
+#################
+###           ###
+###  PREAMBLE ###
+###           ###
+#################
+
 use Modern::Perl 2013;
 use autodie;
 use Getopt::Long;
@@ -21,18 +26,30 @@ sub DateTime::iso8601_with_tz {
   return $val;
 }
 
+#Get the git repository root path
+my $gitroot = `git rev-parse --show-toplevel` or die "";
+chomp $gitroot;
+
+my $reliesFile = $gitroot . "/.relies";
+
 #######################################
 ###                                 ###
 ###  BEGINNING OF CLASS DEFINITIONS ###
 ###                                 ###
 #######################################
 
-package Child {
+package Node {
 
   use Moose;
 
   #The path passed to relies
   has 'passed_path', is => 'ro', isa => 'Str';
+
+  #Parents of this file (i.e. reliances explicitly set by the user)
+  has 'parents', is => 'ro', isa => 'ArrayRef';
+
+  #Safe flag
+  has 'safe', is => 'ro', isa => 'Int';
 
   #Get the git modification status of a file
   sub has_been_modified {
@@ -85,18 +102,45 @@ package Child {
 
   }
 
+  #All ancestors for a child
+  sub ancestors {
+
+    my $self = shift;
+    say "Called ancestors on ", $self->passed_path;
+    my %ancestors;
+
+    foreach my $parent (@{$self->parents}) {
+      $ancestors{$parent}++;
+      $ancestors{$_}++ for &ancestors($parent);
+    }
+
+    return [ keys(%ancestors) ];
+
+  }
+
 }
 
 
 say "Beginning OO tests";
 
-my $test = Child->new( passed_path => 'output_data.txt' );
+say "Reading reliances...";
+my @allFiles = &read_reliances;
 
-say "Passed path is ", $test->passed_path;
+foreach (@allFiles) {
 
-say "I've been modified" if $test->has_been_modified;
+  say "Passed path is ", $_->passed_path;
 
-say "Last modified time is ", $test->last_modified;
+  say "I've been modified" if $_->has_been_modified;
+
+  say "Last modified time is ", $_->last_modified;
+
+  say "My parents are:";
+  say for @{$_->parents};
+
+  say "My ancestors are:";
+  say for @{$_->ancestors};
+
+}
 
 exit;
 
@@ -105,12 +149,6 @@ exit;
 ###  BEGINNING OF MAIN LOOP ###
 ###                         ###
 ###############################
-
-#Get the git repository root path
-my $gitroot = `git rev-parse --show-toplevel` or die "";
-chomp $gitroot;
-
-my $reliesFile = $gitroot . "/.relies";
 
 #Parse command line options
 my @parents;
@@ -249,23 +287,6 @@ sub young_ancestors {
   return @youngAncestors;
 }
 
-#Get full list of ancestors for a file
-#IMPORTANT: this depends on all relationship
-# being properly validated for non-circularity
-sub ancestors {
-
-  my $child = shift;
-  my %ancestors;
-
-  foreach my $parent (keys %{$reliances{$child}}) {
-    $ancestors{$parent}++;
-    $ancestors{$_}++ for &ancestors($parent);
-  }
-
-  keys(%ancestors);
-
-}
-
 #Print reliances
 sub print_reliances {
 
@@ -374,19 +395,22 @@ sub validate_file {
 sub read_reliances { 
 
   if (! -e $reliesFile) {
-    say "No .relies for this repository - type 'relies init'";
+    say "No .relies for this repository - type 'relies init'"; #TODO implement 'relies init'
     return;
   }
 
   open RELIES, "<", $reliesFile;
+  my @children;
   while (<RELIES>) {
     chomp;
     my @row = split(/\t/, $_);
-    my $child = shift(@row);
-    $isSafe{$child} = shift(@row);
-    %{$reliances{$child}} = map { $_ => 1 } @row;
+    (my $passedPath, my $safe, my @parents) = @row;
+    my $child = Node->new( passed_path => $passedPath, safe => $safe, parents => [ @parents ]);
+    push(@children, $child);
   }
   close RELIES;
+
+  return @children;
 
 }
 
