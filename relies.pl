@@ -47,31 +47,35 @@ my @safe;
 my @unsafe;
 my $whither;
 my $whence;
+my $precommit;
 
-#If no arguments given or './' or '.' given, glob the current directory as children
-if (@ARGV == 0 or $ARGV[0] eq '.' or $ARGV[0] eq './') {
-  @children = glob('./*');
-  @children = grep { !-d $_ } @children;
+GetOptions (
 
-#Otherwise process command line options
-} else {
-  GetOptions (
+  #Passed files
+  "on=s{,}" => \@parents,
+  "off=s{,}" => \@bereaved,
+  "safe=s{,}" => \@safe,
+  "unsafe=s{,}" => \@unsafe,
+  "whither|descendants=s" => \$whither,
+  "whence|ancestors=s" => \$whence,
 
-    #Passed files
-    "on=s{,}" => \@parents,
-    "off=s{,}" => \@bereaved,
-    "safe=s{,}" => \@safe,
-    "unsafe=s{,}" => \@unsafe,
-    "whither|descendants=s" => \$whither,
-    "whence|ancestors=s" => \$whence,
+  #Flags
+  "full" => \$full,
 
-    #Flags
-    "full" => \$full
-  );
-}
+  #Git pre-commit hook
+  "precommit" => \$precommit
+);
 
 #Mop any remaining arguments into @children
 @children = @ARGV;
+
+#If we are using a mode requiring children,
+# and no children given, or './' or '.' given, 
+# glob the current directory as children
+if ((@children == 0 or $children[0] eq '.' or $children[0] eq './') and not $whither and not $whence and not $precommit) {
+  @children = glob('./*');
+  @children = grep { !-d $_ } @children;
+}
 
 #Validate passed files and convert to git paths
 @children = map { &to_git_path($_) } (@children);
@@ -326,11 +330,16 @@ package Node {
 ###                         ###
 ###############################
 
+#Git pre-commit hook
+if ($precommit) {
+
+  system("touch ~/it_happened");
+
 #Safeing
-if (@safe || @unsafe) {
+} elsif (@safe || @unsafe) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || $whither || $whence;
+  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || $whither || $whence || $precommit;
   warn "WARNING: ignoring $_\n" for @children;
   warn "WARNING: ignoring --full\n" if $full;
 
@@ -362,7 +371,7 @@ if (@safe || @unsafe) {
 } elsif (@parents || @bereaved) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || $whither || $whence;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || $whither || $whence || $precommit;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -383,7 +392,7 @@ if (@safe || @unsafe) {
 } elsif ($whither) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whence;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whence || $precommit;
   warn "WARNING: ignoring $_\n" for @children;
   warn "WARNING: ignoring --full\n" if $full;
 
@@ -416,7 +425,7 @@ if (@safe || @unsafe) {
 } elsif ($whence) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whither;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whither || $precommit;
   warn "WARNING: ignoring $_\n" for @children;
   warn "WARNING: ignoring --full\n" if $full;
 
@@ -489,7 +498,7 @@ sub validate_file {
 sub read_reliances { 
 
   if (! -e $reliesFile) {
-    say "No .relies for this repository - type 'relies init'"; #TODO implement 'relies init'
+    say "No .relies for this repository - type 'relies init'"; #TODO implement 'relies init', needs to create .relies and install git hooks
     return;
   }
 
