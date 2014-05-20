@@ -93,12 +93,22 @@ package Node {
   #Safe flag
   has 'safe', is => 'rw', isa => 'Int';
 
+  #Path relative to current working directory
+  #TODO redefine as an attribute to prevent recomputation
+  sub relative_path {
+
+    my $self = shift;
+    my $relativePath = File::Spec->abs2rel($gitRoot . "/" . $self->git_path);
+    return $relativePath;
+
+  }
+
   #Get the git modification status of a file
   #TODO redefine as an attribute to prevent recalculation
   sub has_been_modified {
 
     my $self = shift;
-    my $fileName = $self->git_path; #TODO fix handling of paths
+    my $fileName = $self->relative_path;
     my $gitStatus = `git status -s $fileName`;
     my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
     return $hasBeenModified;
@@ -116,7 +126,7 @@ package Node {
     my $self = shift;
     my $modTime;
     my $hasBeenModified = $self->has_been_modified;
-    my $fileName = $self->git_path; #TODO fix handling of paths
+    my $fileName = $self->relative_path;
 
     #If there are no local modifications, use the
     # git commit timestamp
@@ -127,7 +137,7 @@ package Node {
       #Need to do a little parsing on date as git doesn't output
       # correct ISO8601 format (thanks...)
       my $ISO8601 = qr/^(?<date>\d{4}-\d{2}-\d{2})\s(?<time>\d{2}:\d{2}:\d{2})\s\+(?<timezonehour>\d{2})(?<timezoneminute>\d{2})$/;
-      die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n" unless $gitTime =~ /$ISO8601/;
+      die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n$gitTime\n" unless $gitTime =~ /$ISO8601/;
       $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
       $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
     
@@ -394,7 +404,7 @@ sub add_parents {
   #Create nodes for child and parent files if they are new
   foreach my $gitPath (@_) {
     next if exists $node{$gitPath};
-    my $newNode = Node->new( git_path => $gitPath, safe => 0, parents => [ ]); #TODO git path
+    my $newNode = Node->new( git_path => $gitPath, safe => 0, parents => [ ]);
     $node{$gitPath} = $newNode;
   }
 
