@@ -48,6 +48,7 @@ my @unsafe;
 my $whither;
 my $whence;
 my $precommit;
+my $nuclear;
 
 GetOptions (
 
@@ -58,6 +59,7 @@ GetOptions (
   "unsafe=s{,}" => \@unsafe,
   "whither|descendants=s" => \$whither,
   "whence|ancestors=s" => \$whence,
+  "nuclear=s" => \$nuclear,
 
   #Flags
   "full" => \$full,
@@ -72,7 +74,7 @@ GetOptions (
 #If we are using a mode requiring children,
 # and no children given, or './' or '.' given, 
 # glob the current directory as children
-if ((@children == 0 or $children[0] eq '.' or $children[0] eq './') and not $whither and not $whence and not $precommit) {
+if ((@children == 0 or $children[0] eq '.' or $children[0] eq './') and not $whither and not $whence and not $nuclear and not $precommit) {
   @children = glob('./*');
   @children = grep { !-d $_ } @children;
 }
@@ -85,6 +87,7 @@ if ((@children == 0 or $children[0] eq '.' or $children[0] eq './') and not $whi
 @unsafe = map { &to_git_path($_) } (@unsafe);
 $whither = &to_git_path($whither) if $whither;
 $whence = &to_git_path($whence) if $whence;
+$nuclear = &to_git_path($nuclear) if $nuclear;
 
 #######################################
 ###                                 ###
@@ -339,7 +342,7 @@ if ($precommit) {
 } elsif (@safe || @unsafe) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || $whither || $whence || $precommit;
+  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || $whither || $whence || $nuclear || $precommit;
   warn "WARNING: ignoring $_\n" for @children;
   warn "WARNING: ignoring --full\n" if $full;
 
@@ -371,7 +374,7 @@ if ($precommit) {
 } elsif (@parents || @bereaved) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || $whither || $whence || $precommit;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || $whither || $whence || $nuclear || $precommit;
   warn "WARNING: ignoring --full\n" if $full;
 
   #Read reliances store into memory
@@ -392,7 +395,7 @@ if ($precommit) {
 } elsif ($whither) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whence || $precommit;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whence || $nuclear || $precommit;
   warn "WARNING: ignoring $_\n" for @children;
   warn "WARNING: ignoring --full\n" if $full;
 
@@ -425,7 +428,7 @@ if ($precommit) {
 } elsif ($whence) {
 
   #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whither || $precommit;
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whither || $nuclear || $precommit;
   warn "WARNING: ignoring $_\n" for @children;
   warn "WARNING: ignoring --full\n" if $full;
 
@@ -448,6 +451,40 @@ if ($precommit) {
   #Construct Graph::Easy graph
   my $graph = Graph::Easy->new();
   $graph->add_edge(@{$_}[1], @{$_}[0]) for values %edges;
+
+  print $graph->as_boxart();
+
+  #Done
+  exit;
+
+#Graph immediate family
+} elsif ($nuclear) {
+
+  #Incompatible options
+  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whither || $whence || $precommit;
+  warn "WARNING: ignoring $_\n" for @children;
+  warn "WARNING: ignoring --full\n" if $full;
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Generate edges for immediate family graph
+  my %edges;
+  foreach my $parent (@{$node{$nuclear}->parents}) {
+    $edges{$parent, $nuclear} = [ $parent, $nuclear ];
+  }
+  foreach my $child (@{$node{$nuclear}->children}) {
+    $edges{$nuclear, $child} = [ $nuclear, $child ];
+  }
+
+  if (keys %edges == 0) {
+    say "$nuclear has no immediate family";
+    exit;
+  }
+
+  #Construct Graph::Easy graph
+  my $graph = Graph::Easy->new();
+  $graph->add_edge(@{$_}[0], @{$_}[1]) for values %edges;
 
   print $graph->as_boxart();
 
