@@ -229,7 +229,7 @@ package Node {
       next if $node{$descendant}->safe;
       my $descendantModFime = $node{$descendant}->last_modified;
       my $compare = DateTime->compare($descendantModFime, $modTime);
-      push(@oldDescendants, $descendant) if $compare == 1;
+      push(@oldDescendants, $descendant) if $compare == -1;
     }
     return [ @oldDescendants ];
   }
@@ -302,7 +302,7 @@ package Node {
       print color 'red';
       print $self->relative_path;
 
-    #Yellow if there are old descentants but no young ancestors
+    #Yellow if there are old descendants but no young ancestors
     } elsif ((not $self->has_young_ancestors) and $self->has_old_descendants) {
       print color 'yellow';
       print $self->relative_path;
