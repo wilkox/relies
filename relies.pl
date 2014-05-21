@@ -318,16 +318,11 @@ package Node {
       die "ERROR: Something has gone horribly wrong";
     }
 
-    #Printing timestamp:
-    # Always if touched
-    # Always if any young ancestors or old descendants
-    if ($self->touch){
-      print color 'bold white';
-      print " [touched " . $self->last_modified_natural . " ago]";
-    } elsif ($self->has_young_ancestors or $self->has_old_descendants) {
-      print color 'bold white';
-      print " [" . $self->last_modified_natural . " ago]";
-    }
+    #Print
+    print color 'white';
+    print " [";
+    print "touched " if $self->touch;
+    print $self->last_modified_natural . " ago]";
     print color 'reset';
   }
 
@@ -336,18 +331,28 @@ package Node {
 
     my $self = shift;
 
-    my @parents = @{$self->parents};
+    #Print antecessors, if any
     my %antecessors = map { $_ => 1 } (@{$self->parents}, @{$self->young_ancestors});
+    if (keys %antecessors) {
+      $self->printf;
+      print " relies on:\n";
+      foreach my $antecessor (keys %antecessors) {
+        print "  ";
+        $node{$antecessor}->printf;
+        print "\n";
+      }
+    }
 
-    #If there are not antecessors, don't print anything
-    return if keys %antecessors == 0;
-
-    $self->printf;
-    print " relies on:\n";
-    foreach my $antecessor (keys %antecessors) {
-      print "   ";
-      $node{$antecessor}->printf;
-      print "\n";
+    #Print progniture, if any
+    my %progeniture = map { $_ => 1 } (@{$self->children}, @{$self->old_descendants});
+    if (keys %progeniture) {
+      $self->printf;
+      print " is relied on by:\n";
+      foreach my $progeny (keys %progeniture) {
+        print "  ";
+        $node{$progeny}->printf;
+        print "\n";
+      }
     }
 
   }
