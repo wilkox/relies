@@ -406,7 +406,9 @@ if (@parents || @bereaved) {
   my %edges;
   foreach my $descendant ($whither, @{$node{$whither}->descendants}) {
     foreach my $child (@{$node{$descendant}->children}) {
-      $edges{$descendant, $child} = [ $descendant, $child ];
+      my $descendantPath = $node{$descendant}->relative_path;
+      my $childPath = $node{$child}->relative_path;
+      $edges{$descendantPath, $childPath} = [ $descendantPath, $childPath ];
     }
   }
 
@@ -425,7 +427,6 @@ if (@parents || @bereaved) {
   exit;
 
 #Graph ancestors
-#TODO change whither/whence/family paths to relative
 #TODO change to case/switch
 } elsif ($command eq 'whence') {
 
@@ -440,7 +441,9 @@ if (@parents || @bereaved) {
   my %edges;
   foreach my $ancestor ($whence, @{$node{$whence}->ancestors}) {
     foreach my $parent (@{$node{$ancestor}->parents}) {
-      $edges{$ancestor, $parent} = [ $ancestor, $parent ];
+      my $ancestorPath = $node{$ancestor}->relative_path;
+      my $parentPath = $node{$parent}->relative_path;
+      $edges{$ancestorPath, $parentPath} = [ $ancestorPath, $parentPath ];
     }
   }
 
@@ -474,10 +477,10 @@ if (@parents || @bereaved) {
   #Generate edges for immediate family graph
   my %edges;
   foreach my $parent (@{$node{$file}->parents}) {
-    $edges{$parent, $file} = [ $parent, $file ];
+    $edges{$node{$parent}->relative_path, $file} = [ $node{$parent}->relative_path, $file ];
   }
   foreach my $child (@{$node{$file}->children}) {
-    $edges{$file, $child} = [ $file, $child ];
+    $edges{$file, $node{$child}->relative_path} = [ $file, $node{$child}->relative_path ];
   }
 
   if (keys %edges == 0) {
