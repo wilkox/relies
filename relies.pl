@@ -204,6 +204,25 @@ package Node {
   
   }
 
+  #Descendants with a mod time < than this file's mod time
+  #TODO cache
+  sub old_descendants {
+
+    my $self = shift;
+    my $modTime = $self->last_modified;
+    my @descendants = @{$self->descendants};
+    my @oldDescendants;
+
+    foreach my $descendant (@descendants) {
+      next if $node{$descendant}->safe;
+      my $descendantModFime = $node{$descendant}->last_modified;
+      my $compare = DateTime->compare($descendantModFime, $modTime);
+      push(@oldDescendants, $descendant) if $compare == 1;
+    }
+    return [ @oldDescendants ];
+  }
+
+
   #Ancestors with a mod time > than this file's mod time
   #TODO cache
   sub young_ancestors {
@@ -240,6 +259,13 @@ package Node {
 
   #Convenience
   #TODO redefine as attribute to prevent recalculation
+  sub has_old_descendants {
+    my $self = shift;
+    return scalar @{$self->old_descendants};
+  }
+
+  #Convenience
+  #TODO redefine as attribute to prevent recalculation
   sub has_young_ancestors {
     my $self = shift;
     return scalar @{$self->young_ancestors};
@@ -250,11 +276,11 @@ package Node {
 
     my $self = shift;
 
-    # Green = no modifications in file, no reliance problems
+    # Green = no young ancestors, no old descendants
     # Blue = safed and no modifications
     # Magenta = safed with modifications
-    # Yellow = modifications in file, no reliance problems
-    # Red = reliance problems
+    # Yellow = has old descendants, no young ancestors
+    # Red = young ancestors
     
     #Bold blue if safed and no modifications
     if ($self->safe and not $self->has_been_modified) {
@@ -264,16 +290,16 @@ package Node {
     } elsif ($self->safe and $self->has_been_modified) {
       print color 'magenta';
 
-    #Red if there are reliance problems
+    #Red if there are young ancestors
     } elsif ($self->has_young_ancestors) {
       print color 'red';
 
-    #Yellow if there are local modifications but no reliance problems
-    } elsif ((not $self->has_young_ancestors) and $self->has_been_modified) {
+    #Yellow if there are old descentands but no young ancestors
+    } elsif ((not $self->has_young_ancestors) and $self->has_old_descendants) {
       print color 'yellow';
 
-    #Green if there are no local modifications and no reliance problems
-    } elsif ((not $self->has_young_ancestors) and (not $self->has_been_modified)) {
+    #Green if there are no young ancestors and no old descendants
+    } elsif ((not $self->has_young_ancestors) and (not $self->has_old_descendants)) {
       print color 'green';
 
     #If there are reliance problems but no file modifications, something
@@ -425,6 +451,7 @@ if ($precommit) {
   exit;
 
 #Graph ancestors
+#TODO change whither/whence/nuclear paths to relative
 } elsif ($whence) {
 
   #Incompatible options
