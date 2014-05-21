@@ -616,11 +616,10 @@ if (@parents || @bereaved) {
   foreach my $file (keys %node) {
 
     #TODO this won't be necessary once young_ancestors is cached
-    my @youngAncestors = @{$node{$file}->young_ancestors};
-    next unless @youngAncestors;
+    next unless $node{$file}->has_young_ancestors;
     $node{$file}->printf;
     say " relies on:";
-    foreach my $youngAncestor (@youngAncestors) {
+    foreach my $youngAncestor (@{$node{$file}->young_ancestors}) {
       print "  ";
       $node{$youngAncestor}->printf;
       print"\n";
