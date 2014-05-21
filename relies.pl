@@ -39,56 +39,41 @@ my $reliesFile = $gitRoot . "/.relies";
 # Value: obj
 my %node;
 
-#Parse command line options
-my @parents;
-my @bereaved;
-my @children;
-my $full;
-my @safe;
-my @unsafe;
-my $whither;
-my $whence;
-my $precommit;
-my $nuclear;
+#Parse command and options
+my $command;
+my @parents; #Special infix option
+my @bereaved; #Special infix option
+my @fileList;
+my %validCommand = map { $_ => 1 } qw(safe unsafe whither whence family parents children status);
+$command = shift(@ARGV) if @ARGV > 0 and $validCommand{$ARGV[0]};
 
 GetOptions (
 
-  #Passed files
+  #Infix options
   "on=s{,}" => \@parents,
   "off=s{,}" => \@bereaved,
-  "safe=s{,}" => \@safe,
-  "unsafe=s{,}" => \@unsafe,
-  "whither|descendants=s" => \$whither,
-  "whence|ancestors=s" => \$whence,
-  "nuclear=s" => \$nuclear,
 
-  #Flags
-  "full" => \$full,
-
-  #Git pre-commit hook
-  "precommit" => \$precommit
 );
 
-#Mop any remaining arguments into @children
-@children = @ARGV;
+#Mop any remaining arguments into @fileList
+@fileList = @ARGV;
 
-#If we are using a mode requiring children,
-# and no children given, or './' or '.' given, 
-# glob the current directory as children
-if ((@children == 0 or $children[0] eq '.' or $children[0] eq './') and not $whither and not $whence and not $nuclear and not $precommit) {
-  @children = glob('./*');
-  @children = grep { !-d $_ } @children;
+#If no command or infix operator was passed,
+# set command to default 'status'
+$command = 'status' if not $command and not @parents and not @bereaved;
+
+#If we are using a command (i.e. not infix)
+# and no list of files given, or './' or '.' given, 
+# glob the current directory as @fileList
+if ($command and (@fileList == 0 or $fileList[0] eq '.' or $fileList[0] eq './')) {
+  @fileList = glob('./*');
+  @fileList = grep { !-d $_ } @fileList;
 }
 
 #Validate passed files and convert to git paths
-@children = map { &to_git_path($_) } (@children);
+@fileList = map { &to_git_path($_) } (@fileList);
 @parents = map { &to_git_path($_) } (@parents);
 @bereaved = map { &to_git_path($_) } (@bereaved);
-@safe = map { &to_git_path($_) } (@safe);
-@unsafe = map { &to_git_path($_) } (@unsafe);
-$whither = &to_git_path($whither) if $whither;
-$whence = &to_git_path($whence) if $whence;
-$nuclear = &to_git_path($nuclear) if $nuclear;
 
 ######################################
 ###                                ###
@@ -292,12 +277,12 @@ package Node {
 
     my $self = shift;
 
-    # Green   : no young ancestors, no old descendants
     # Blue    : safed
-    # Yellow  : has old descendants, no young ancestors
-    # Red     : young ancestors
+    # Green   : no young ancestors, no old descendants
+    # Yellow  : no young ancestors, has old descendants
+    # Red     : has young ancestors
     
-    #Bold blue if safed and no modifications
+    #Blue if safed
     if ($self->safe and not $self->has_been_modified) {
       print color 'blue';
       print $self->relative_path;
@@ -338,23 +323,8 @@ package Node {
 
     my $self = shift;
 
-    #Skip if child is safe and full has not been requested
-    return if $self->safe and not $full;
-
     my @parents = @{$self->parents};
-
-    #Choose the appropriate subset of antecessors
-    # to print
-    my %antecessors;
-    #If the full option was given, print all ancestors
-    if ($full) {
-      %antecessors = map { $_ => 1 } @{$self->ancestors};
-    
-    #If the full option was not given, print parents and 
-    # young ancestors only
-    } else {
-      %antecessors = map { $_ => 1 } (@{$self->parents}, @{$self->young_ancestors});
-    }
+    my %antecessors = map { $_ => 1 } (@{$self->parents}, @{$self->young_ancestors});
 
     #If there are not antecessors, don't print anything
     return if keys %antecessors == 0;
@@ -377,33 +347,21 @@ package Node {
 ###                        ###
 ##############################
 
-#Git pre-commit hook
-if ($precommit) {
-
-  system("touch ~/it_happened");
-
-#Safeing
-} elsif (@safe || @unsafe) {
-
-  #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @parents || @bereaved || $whither || $whence || $nuclear || $precommit;
-  warn "WARNING: ignoring $_\n" for @children;
-  warn "WARNING: ignoring --full\n" if $full;
+#Safeing/unsafing
+if ($command eq "safe" or $command eq "unsafe") {
 
   #Read reliances store into memory
   &read_reliances;
 
   #Check that all the safe/unsafe files are actually
   # known to relies
-  foreach (@safe, @unsafe) {
+  foreach (@fileList) {
     die "ERROR: $_ does not have any reliances\n" unless exists $node{$_};
   }
 
-  #Make safe
-  $node{$_}->safe(1) for @safe;
-
-  #Make unsafe
-  $node{$_}->safe(0) for @unsafe;
+  #Make safe/unsafe
+  my $safeValue = $command eq 'safe' ? 1 : 0;
+  $node{$_}->safe($safeValue) for @fileList;
 
   #Write to file
   &write_reliances;
@@ -412,36 +370,12 @@ if ($precommit) {
   say "OK";
   exit;
 
-
-#If parents and/or bereaved were provided,
-# add/remove as necessary
-} elsif (@parents || @bereaved) {
-
-  #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || $whither || $whence || $nuclear || $precommit;
-  warn "WARNING: ignoring --full\n" if $full;
-
-  #Read reliances store into memory
-  &read_reliances;
-
-  #Update as needed
-  &add_parents($_, @parents) for @children;
-  &remove_parents($_, @parents) for @children;
-
-  #Write reliances store to file
-  &write_reliances;
-
-  #Done
-  say "OK";
-  exit;
-
 #Graph descendants
-} elsif ($whither) {
+} elsif ($command eq 'whither') {
 
-  #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whence || $nuclear || $precommit;
-  warn "WARNING: ignoring $_\n" for @children;
-  warn "WARNING: ignoring --full\n" if $full;
+  #Only plot one file
+  die "ERROR: 'whither' only works for a single file\n" if @fileList > 1;
+  my $whither = $fileList[0];
 
   #Read reliances store into memory
   &read_reliances;
@@ -455,7 +389,7 @@ if ($precommit) {
   }
 
   if (keys %edges == 0) {
-    say "$whither has no descendants";
+    say "No known descendants of $whither";
     exit;
   }
 
@@ -469,13 +403,13 @@ if ($precommit) {
   exit;
 
 #Graph ancestors
-#TODO change whither/whence/nuclear paths to relative
-} elsif ($whence) {
+#TODO change whither/whence/family paths to relative
+#TODO change to case/switch
+} elsif ($command eq 'whence') {
 
-  #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whither || $nuclear || $precommit;
-  warn "WARNING: ignoring $_\n" for @children;
-  warn "WARNING: ignoring --full\n" if $full;
+  #Only plot one file
+  die "ERROR: 'whence' only works for a single file\n" if @fileList > 1;
+  my $whence = $fileList[0];
 
   #Read reliances store into memory
   &read_reliances;
@@ -489,7 +423,7 @@ if ($precommit) {
   }
 
   if (keys %edges == 0) {
-    say "$whence has no ancestors";
+    say "No known ancestors for $whence";
     exit;
   }
 
@@ -503,30 +437,29 @@ if ($precommit) {
   exit;
 
 #Graph immediate family
-} elsif ($nuclear) {
+} elsif ($command eq 'family') {
 
-  #Incompatible options
-  die "ERROR: Slow down, tiger...one thing at a time" if @safe || @unsafe || @parents || @bereaved || $whither || $whence || $precommit;
-  warn "WARNING: ignoring $_\n" for @children;
-  warn "WARNING: ignoring --full\n" if $full;
+  #Only show one file
+  die "ERROR: 'family' only works for a single file\n" if @fileList > 1;
+  my $file = $fileList[0];
 
   #Read reliances store into memory
   &read_reliances;
 
   #Exit if this file is unknown to relies
-  exit unless exists $node{$nuclear};
+  exit unless exists $node{$file};
 
   #Generate edges for immediate family graph
   my %edges;
-  foreach my $parent (@{$node{$nuclear}->parents}) {
-    $edges{$parent, $nuclear} = [ $parent, $nuclear ];
+  foreach my $parent (@{$node{$file}->parents}) {
+    $edges{$parent, $file} = [ $parent, $file ];
   }
-  foreach my $child (@{$node{$nuclear}->children}) {
-    $edges{$nuclear, $child} = [ $nuclear, $child ];
+  foreach my $child (@{$node{$file}->children}) {
+    $edges{$file, $child} = [ $file, $child ];
   }
 
   if (keys %edges == 0) {
-    say "$nuclear has no immediate family";
+    say "$file has no immediate family";
     exit;
   }
 
@@ -539,15 +472,14 @@ if ($precommit) {
   #Done
   exit;
 
-#If no options were provided, give information about
-# the listed child(ren)
-} else {
+#Report the status of the listed files
+} elsif ($command eq 'status') {
 
   #Read reliances store into memory
   &read_reliances;
 
   #Describe parents for children
-  foreach (@children) {
+  foreach (@fileList) {
     next unless exists $node{$_};
     $node{$_}->printf_reliances;
   }
@@ -555,6 +487,28 @@ if ($precommit) {
   #Done
   exit;
 
+#If parents and/or bereaved were provided,
+# add/remove as necessary
+} elsif (@parents || @bereaved) {
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Update as needed
+  &add_parents($_, @parents) for @fileList;
+  &remove_parents($_, @parents) for @fileList;
+
+  #Write reliances store to file
+  &write_reliances;
+
+  #Done
+  say "OK";
+  exit;
+
+#Catch weirdness
+} else {
+  say "Command is $command";
+  die "Something has gone terribly wrong";
 }
 
 ###################################################
