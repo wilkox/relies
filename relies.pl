@@ -272,6 +272,7 @@ package Node {
   #TODO redefine as attribute to prevent recalculation
   sub has_old_descendants {
     my $self = shift;
+    return 0 if $self->safe; #A safed file can't have any problems
     return scalar @{$self->old_descendants};
   }
 
@@ -279,6 +280,7 @@ package Node {
   #TODO redefine as attribute to prevent recalculation
   sub has_young_ancestors {
     my $self = shift;
+    return 0 if $self->safe; #A safed file can't have any problems
     return scalar @{$self->young_ancestors};
   }
 
