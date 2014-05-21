@@ -43,7 +43,7 @@ my $command;
 my @parents; #Special infix option
 my @bereaved; #Special infix option
 my @fileList;
-my %validCommand = map { $_ => 1 } qw(safe unsafe whither whence family parents children status touch untouch);
+my %validCommand = map { $_ => 1 } qw(safe unsafe whither whence family parents children status touch untouch doctor);
 $command = shift(@ARGV) if @ARGV > 0 and $validCommand{$ARGV[0]};
 
 GetOptions (
@@ -601,6 +601,33 @@ if (@parents || @bereaved) {
   #Done
   say 'OK';
   exit;
+
+#Check every file in the repository
+} elsif ($command eq 'doctor') {
+
+  say 'Checking all tracked files for problems...';
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Loop over all files
+  foreach my $file (keys %node) {
+
+    #TODO this won't be necessary once young_ancestors is cached
+    my @youngAncestors = @{$node{$file}->young_ancestors};
+    next unless @youngAncestors;
+    $node{$file}->printf;
+    say " relies on:";
+    foreach my $youngAncestor (@youngAncestors) {
+      print "  ";
+      $node{$youngAncestor}->printf;
+      print"\n";
+    }
+  
+  }
+
+  exit;
+
 #Catch weirdness
 } else {
   say "Command is $command";
