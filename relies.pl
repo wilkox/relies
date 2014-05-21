@@ -13,6 +13,7 @@ use Cwd::Ext 'abs_path_nd';
 use File::Slurp;
 use DateTime::Format::ISO8601;
 use DateTime::Format::Strptime;
+use DateTime::Format::Human::Duration;
 use File::Spec;
 use Graph::Easy;
 $|++;
@@ -131,12 +132,25 @@ package Node {
 
   }
 
+  #Format the last modified time, in natural language
+  sub last_modified_natural {
+
+    my $self = shift;
+    my $span = DateTime::Format::Human::Duration->new();
+    my $now = DateTime->now();
+    my $ago = $span->format_duration_between($now, $self->last_modified, 'significant_units' => 1);
+    return $ago;
+  
+  }
+
   #Get the last modified time for a file
   #  Last modified time is defined as:
   #    If there are no local modifications to the file:
   #      Timestamp for last git commit referencing that file
   #    If there are local modifications to the file:
   #      Timestamp for last filesystem modification
+  #
+  # Returns a Date::Time object
   sub last_modified {
 
     my $self = shift;
@@ -285,31 +299,42 @@ package Node {
     #Bold blue if safed and no modifications
     if ($self->safe and not $self->has_been_modified) {
       print color 'blue';
+      print $self->relative_path;
+      print color 'reset';
 
     #Magenta if safed and modifications
     } elsif ($self->safe and $self->has_been_modified) {
       print color 'magenta';
+      print $self->relative_path;
+      print color 'reset';
 
     #Red if there are young ancestors
     } elsif ($self->has_young_ancestors) {
       print color 'red';
+      print $self->relative_path;
+      print color 'bold white';
+      print " [" . $self->last_modified_natural . " ago]";
+      print color 'reset';
 
-    #Yellow if there are old descentands but no young ancestors
+    #Yellow if there are old descentants but no young ancestors
     } elsif ((not $self->has_young_ancestors) and $self->has_old_descendants) {
       print color 'yellow';
+      print $self->relative_path;
+      print color 'bold white';
+      print " [" . $self->last_modified_natural . " ago]";
+      print color 'reset';
 
     #Green if there are no young ancestors and no old descendants
     } elsif ((not $self->has_young_ancestors) and (not $self->has_old_descendants)) {
       print color 'green';
+      print $self->relative_path;
+      print color 'reset';
 
     #If there are reliance problems but no file modifications, something
     # has gone horribly wrong
     } else {
       die "ERROR: Something has gone horribly wrong";
     }
-
-    print $self->relative_path;
-    print color 'reset';
 
   }
 
@@ -341,11 +366,11 @@ package Node {
     return if keys %antecessors == 0;
 
     $self->printf;
-    print " relies on\n";
+    print " relies on:\n";
     foreach my $antecessor (keys %antecessors) {
       print "   ";
       $node{$antecessor}->printf;
-      say "\t";
+      print "\n";
     }
 
   }
