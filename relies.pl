@@ -29,7 +29,7 @@ sub DateTime::iso8601_with_tz {
 }
 
 #Get the git repository root path
-my $gitRoot = `git rev-parse --show-toplevel` or die "";
+my $gitRoot = `git rev-parse --show-toplevel` or die "\n";
 chomp $gitRoot;
 
 my $reliesFile = $gitRoot . "/.relies";
@@ -90,11 +90,11 @@ $whither = &to_git_path($whither) if $whither;
 $whence = &to_git_path($whence) if $whence;
 $nuclear = &to_git_path($nuclear) if $nuclear;
 
-#######################################
-###                                 ###
-###  BEGINNING OF CLASS DEFINITIONS ###
-###                                 ###
-#######################################
+######################################
+###                                ###
+### BEGINNING OF CLASS DEFINITIONS ###
+###                                ###
+######################################
 
 package Node {
 
@@ -109,6 +109,9 @@ package Node {
 
   #Safe flag
   has 'safe', is => 'rw', isa => 'Int';
+
+  #Touch date
+  has 'touch', is => 'rw', isa => 'Str';
 
   #Path relative to current working directory
   #TODO redefine as an attribute to prevent recomputation
@@ -236,7 +239,6 @@ package Node {
     return [ @oldDescendants ];
   }
 
-
   #Ancestors with a mod time > than this file's mod time
   #TODO cache
   sub young_ancestors {
@@ -290,21 +292,14 @@ package Node {
 
     my $self = shift;
 
-    # Green = no young ancestors, no old descendants
-    # Blue = safed and no modifications
-    # Magenta = safed with modifications
-    # Yellow = has old descendants, no young ancestors
-    # Red = young ancestors
+    # Green   : no young ancestors, no old descendants
+    # Blue    : safed
+    # Yellow  : has old descendants, no young ancestors
+    # Red     : young ancestors
     
     #Bold blue if safed and no modifications
     if ($self->safe and not $self->has_been_modified) {
       print color 'blue';
-      print $self->relative_path;
-      print color 'reset';
-
-    #Magenta if safed and modifications
-    } elsif ($self->safe and $self->has_been_modified) {
-      print color 'magenta';
       print $self->relative_path;
       print color 'reset';
 
@@ -358,7 +353,6 @@ package Node {
     #If the full option was not given, print parents and 
     # young ancestors only
     } else {
-
       %antecessors = map { $_ => 1 } (@{$self->parents}, @{$self->young_ancestors});
     }
 
@@ -375,14 +369,13 @@ package Node {
 
   }
 
-
 }
 
-###############################
-###                         ###
-###  BEGINNING OF MAIN LOOP ###
-###                         ###
-###############################
+##############################
+###                        ###
+### BEGINNING OF MAIN LOOP ###
+###                        ###
+##############################
 
 #Git pre-commit hook
 if ($precommit) {
@@ -520,6 +513,9 @@ if ($precommit) {
   #Read reliances store into memory
   &read_reliances;
 
+  #Exit if this file is unknown to relies
+  exit unless exists $node{$nuclear};
+
   #Generate edges for immediate family graph
   my %edges;
   foreach my $parent (@{$node{$nuclear}->parents}) {
@@ -599,8 +595,8 @@ sub read_reliances {
   while (<RELIES>) {
     chomp;
     my @row = split(/\t/, $_);
-    (my $gitPath, my $safe, my @parents) = @row;
-    my $child = Node->new( git_path => $gitPath, safe => $safe, parents => [ @parents ]);
+    (my $gitPath, my $safe, my $touch, my @parents) = @row;
+    my $child = Node->new( git_path => $gitPath, safe => $safe, touch => $touch, parents => [ @parents ]);
     $node{$gitPath} = $child;
   }
   close RELIES;
@@ -615,7 +611,7 @@ sub add_parents {
   #Create nodes for child and parent files if they are new
   foreach my $gitPath (@_) {
     next if exists $node{$gitPath};
-    my $newNode = Node->new( git_path => $gitPath, safe => 0, parents => [ ]);
+    my $newNode = Node->new( git_path => $gitPath, safe => 0, touch => 0, parents => [ ]);
     $node{$gitPath} = $newNode;
   }
 
@@ -649,8 +645,7 @@ sub write_reliances {
   open RELIES, ">", $reliesFile;
   foreach my $node (keys %node) {
 
-    my $parents = join("\t", @{$node{$node}->parents});
-    say RELIES $node{$node}->git_path . "\t" . $node{$node}->safe . "\t" . $parents;
+    say RELIES join("\t", ($node{$node}->git_path, $node{$node}->safe, $node{$node}->touch, @{$node{$node}->parents}));
   
   }
   close RELIES;
