@@ -20,7 +20,6 @@ $|++;
 
 #Formatter to write ISO8601 timestamps
 # From https://movieos.org/blog/2006/perl-datetime-iso8601/
-my $ISO8601Formatter = DateTime::Format::Strptime->new( pattern => "%{iso8601_with_tz}" );
 sub DateTime::iso8601_with_tz {
   my $self = shift;
   my $val = $self->strftime('%FT%T%z');
@@ -44,7 +43,7 @@ my $command;
 my @parents; #Special infix option
 my @bereaved; #Special infix option
 my @fileList;
-my %validCommand = map { $_ => 1 } qw(safe unsafe whither whence family parents children status);
+my %validCommand = map { $_ => 1 } qw(safe unsafe whither whence family parents children status touch untouch);
 $command = shift(@ARGV) if @ARGV > 0 and $validCommand{$ARGV[0]};
 
 GetOptions (
@@ -137,6 +136,8 @@ package Node {
 
   #Get the last modified time for a file
   #  Last modified time is defined as:
+  #    If the file has been touched
+  #      Touched tim
   #    If there are no local modifications to the file:
   #      Timestamp for last git commit referencing that file
   #    If there are local modifications to the file:
@@ -150,9 +151,15 @@ package Node {
     my $hasBeenModified = $self->has_been_modified;
     my $fileName = $self->relative_path;
 
+    #If the file has been touched, use the touched time
+    if ($self->touch) {
+
+      $modTime = DateTime::Format::ISO8601->parse_datetime($self->touch);
+      return $modTime;
+
     #If there are no local modifications, use the
     # git commit timestamp
-    if (! $hasBeenModified) {
+    } elsif (! $hasBeenModified) {
 
       my $gitTime = `git log -1 --format="%ad" --date=iso $fileName`;
 
@@ -172,7 +179,6 @@ package Node {
     
     }
 
-    $modTime->set_formatter($ISO8601Formatter);
     return $modTime;
 
   }
@@ -290,29 +296,21 @@ package Node {
     if ($self->safe and not $self->has_been_modified) {
       print color 'blue';
       print $self->relative_path;
-      print color 'reset';
 
     #Red if there are young ancestors
     } elsif ($self->has_young_ancestors) {
       print color 'red';
       print $self->relative_path;
-      print color 'bold white';
-      print " [" . $self->last_modified_natural . " ago]";
-      print color 'reset';
 
     #Yellow if there are old descentants but no young ancestors
     } elsif ((not $self->has_young_ancestors) and $self->has_old_descendants) {
       print color 'yellow';
       print $self->relative_path;
-      print color 'bold white';
-      print " [" . $self->last_modified_natural . " ago]";
-      print color 'reset';
 
     #Green if there are no young ancestors and no old descendants
     } elsif ((not $self->has_young_ancestors) and (not $self->has_old_descendants)) {
       print color 'green';
       print $self->relative_path;
-      print color 'reset';
 
     #If there are reliance problems but no file modifications, something
     # has gone horribly wrong
@@ -320,6 +318,17 @@ package Node {
       die "ERROR: Something has gone horribly wrong";
     }
 
+    #Printing timestamp:
+    # Always if touched
+    # Always if any young ancestors or old descendants
+    if ($self->touch){
+      print color 'bold white';
+      print " [touched " . $self->last_modified_natural . " ago]";
+    } elsif ($self->has_young_ancestors or $self->has_old_descendants) {
+      print color 'bold white';
+      print " [" . $self->last_modified_natural . " ago]";
+    }
+    print color 'reset';
   }
 
   #Print reliances
@@ -550,6 +559,43 @@ if (@parents || @bereaved) {
   #Done
   exit;
 
+#Touch file(s) to bump the modified date
+} elsif ($command eq 'touch') {
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Touch files
+  foreach my $file (@fileList) {
+    next unless exists $node{$file};
+    my $now = DateTime->now()->iso8601_with_tz;
+    $node{$file}->touch($now);
+  }
+
+  #Write reliances store to file
+  &write_reliances;
+
+  #Done
+  say 'OK';
+  exit;
+
+#Untouch file(s)
+} elsif ($command eq 'untouch') {
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Untouch files
+  foreach my $file (@fileList) {
+    $node{$file}->touch(0);
+  }
+
+  #Write reliances store to file
+  &write_reliances;
+
+  #Done
+  say 'OK';
+  exit;
 #Catch weirdness
 } else {
   say "Command is $command";
