@@ -55,6 +55,10 @@ GetOptions (
 
 );
 
+#Call foul if mix of infix and command
+die "ERROR: can't mix $command with --on\n" if $command and @parents;
+die "ERROR: can't mix $command with --off\n" if $command and @bereaved;
+
 #Mop any remaining arguments into @fileList
 @fileList = @ARGV;
 
@@ -347,8 +351,26 @@ package Node {
 ###                        ###
 ##############################
 
+#If parents and/or bereaved were provided,
+# add/remove as necessary
+if (@parents || @bereaved) {
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Update as needed
+  &add_parents($_, @parents) for @fileList;
+  &remove_parents($_, @parents) for @fileList;
+  
+  #Write reliances store to file
+  &write_reliances;
+
+  #Done
+  say "OK";
+  exit;
+
 #Safeing/unsafing
-if ($command eq "safe" or $command eq "unsafe") {
+} elsif ($command eq "safe" or $command eq "unsafe") {
 
   #Read reliances store into memory
   &read_reliances;
@@ -487,22 +509,42 @@ if ($command eq "safe" or $command eq "unsafe") {
   #Done
   exit;
 
-#If parents and/or bereaved were provided,
-# add/remove as necessary
-} elsif (@parents || @bereaved) {
+#List parents
+} elsif ($command eq 'parents') {
+
+  #Only show one file
+  die "ERROR: 'parents' only works for a single file\n" if @fileList > 1;
+  my $file = $fileList[0];
 
   #Read reliances store into memory
   &read_reliances;
 
-  #Update as needed
-  &add_parents($_, @parents) for @fileList;
-  &remove_parents($_, @parents) for @fileList;
+  #Is this a known file?
+  exit unless exists $node{$file};
 
-  #Write reliances store to file
-  &write_reliances;
+  #List parents
+  say $node{$_}->relative_path for @{$node{$file}->parents};
 
   #Done
-  say "OK";
+  exit;
+
+#List children
+} elsif ($command eq 'children') {
+
+  #Only show one file
+  die "ERROR: 'children' only works for a single file\n" if @fileList > 1;
+  my $file = $fileList[0];
+
+  #Read reliances store into memory
+  &read_reliances;
+
+  #Is this a known file?
+  exit unless exists $node{$file};
+
+  #List children
+  say $node{$_}->relative_path for @{$node{$file}->children};
+
+  #Done
   exit;
 
 #Catch weirdness
