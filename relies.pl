@@ -299,24 +299,24 @@ package Node {
 
     #Choose the appropriate subset of antecessors
     # to print
-    my @antecessors;
+    my %antecessors;
     #If the full option was given, print all ancestors
     if ($full) {
-      @antecessors = @{$self->ancestors};
+      %antecessors = map { $_ => 1 } @{$self->ancestors};
     
-    #If the full option was not given, print any problematic
-    # ancestors
+    #If the full option was not given, print parents and 
+    # young ancestors only
     } else {
 
-      @antecessors = @{$self->young_ancestors};
+      %antecessors = map { $_ => 1 } (@{$self->parents}, @{$self->young_ancestors});
     }
 
     #If there are not antecessors, don't print anything
-    return if @antecessors == 0;
+    return if keys %antecessors == 0;
 
     $self->printf;
     print " relies on\n";
-    foreach my $antecessor (@antecessors) {
+    foreach my $antecessor (keys %antecessors) {
       print "   ";
       $node{$antecessor}->printf;
       say "\t";
@@ -499,7 +499,10 @@ if ($precommit) {
   &read_reliances;
 
   #Describe parents for children
-  $node{$_}->printf_reliances for @children;
+  foreach (@children) {
+    next unless exists $node{$_};
+    $node{$_}->printf_reliances;
+  }
 
   #Done
   exit;
