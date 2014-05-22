@@ -227,8 +227,8 @@ package Node {
 
     foreach my $descendant (@descendants) {
       next if $node{$descendant}->safe;
-      my $descendantModFime = $node{$descendant}->last_modified;
-      my $compare = DateTime->compare($descendantModFime, $modTime);
+      my $descendantModTime = $node{$descendant}->last_modified;
+      my $compare = DateTime->compare($descendantModTime, $modTime);
       push(@oldDescendants, $descendant) if $compare == -1;
     }
     return [ @oldDescendants ];
@@ -272,7 +272,6 @@ package Node {
   #TODO redefine as attribute to prevent recalculation
   sub has_old_descendants {
     my $self = shift;
-    return 0 if $self->safe; #A safed file can't have any problems
     return scalar @{$self->old_descendants};
   }
 
@@ -289,13 +288,13 @@ package Node {
 
     my $self = shift;
 
-    # Blue    : safed
+    # Blue    : safed, no old descendants
     # Green   : no young ancestors, no old descendants
     # Yellow  : no young ancestors, has old descendants
     # Red     : has young ancestors
     
-    #Blue if safed
-    if ($self->safe and not $self->has_been_modified) {
+    #Blue if safed and no old descendants
+    if ($self->safe and not $self->has_old_descendants) {
       print color 'blue';
       print $self->relative_path;
 
