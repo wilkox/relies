@@ -93,7 +93,7 @@ package Node {
   has 'git_path', is => 'ro', isa => 'Str';
 
   #Parents of this file (i.e. reliances explicitly set by the user)
-  has 'parents', is => 'rw', isa => 'ArrayRef';
+  has 'parents', is => 'rw', isa => 'ArrayRef', auto_deref => 1;
 
   #Safe flag
   has 'safe', is => 'rw', isa => 'Int';
@@ -190,13 +190,13 @@ package Node {
     my $self = shift;
     my %ancestors;
 
-    foreach my $parentGitPath (@{$self->parents}) {
+    foreach my $parentGitPath ($self->parents) {
       my $parent = $node{$parentGitPath};
       $ancestors{$parentGitPath}++;
-      $ancestors{$_}++ for @{$node{$parentGitPath}->ancestors};
+      $ancestors{$_}++ for $node{$parentGitPath}->ancestors;
     }
 
-    return [ keys(%ancestors) ];
+    return keys(%ancestors);
 
   }
 
@@ -206,13 +206,13 @@ package Node {
     my $self = shift;
     my %descendants;
 
-    foreach my $childGitPath (@{$self->children}) {
+    foreach my $childGitPath ($self->children) {
       my $child = $node{$childGitPath};
       $descendants{$childGitPath}++;
-      $descendants{$_}++ for @{$node{$childGitPath}->children};
+      $descendants{$_}++ for $node{$childGitPath}->children;
     }
 
-    return [ keys(%descendants) ];
+    return keys(%descendants);
   
   }
 
@@ -222,7 +222,7 @@ package Node {
 
     my $self = shift;
     my $modTime = $self->last_modified;
-    my @descendants = @{$self->descendants};
+    my @descendants = $self->descendants;
     my @oldDescendants;
 
     foreach my $descendant (@descendants) {
@@ -231,7 +231,7 @@ package Node {
       my $compare = DateTime->compare($descendantModTime, $modTime);
       push(@oldDescendants, $descendant) if $compare == -1;
     }
-    return [ @oldDescendants ];
+    return @oldDescendants;
   }
 
   #Ancestors with a mod time > than this file's mod time
@@ -240,7 +240,7 @@ package Node {
 
     my $self = shift;
     my $modTime = $self->last_modified;
-    my @ancestors = @{$self->ancestors};
+    my @ancestors = $self->ancestors;
     my @youngAncestors;
 
     foreach my $ancestor (@ancestors) {
@@ -249,7 +249,7 @@ package Node {
       my $compare = DateTime->compare($ancestorModTime, $modTime);
       push(@youngAncestors, $ancestor) if $compare == 1;
     }
-    return [ @youngAncestors ];
+    return @youngAncestors; 
   }
 
   #All children of a node
@@ -260,11 +260,11 @@ package Node {
     my %children;
 
     foreach my $potentialChild (keys %node) {
-      my %actualParents = map { $_ => 1 } @{$node{$potentialChild}->parents};
+      my %actualParents = map { $_ => 1 } $node{$potentialChild}->parents;
       $children{$potentialChild}++ if exists $actualParents{$self->git_path};
     }
 
-    return [ keys %children ];
+    return keys %children;
   
   }
 
@@ -272,7 +272,7 @@ package Node {
   #TODO redefine as attribute to prevent recalculation
   sub has_old_descendants {
     my $self = shift;
-    return scalar @{$self->old_descendants};
+    return scalar $self->old_descendants;
   }
 
   #Convenience
@@ -280,7 +280,7 @@ package Node {
   sub has_young_ancestors {
     my $self = shift;
     return 0 if $self->safe; #A safed file can't have any problems
-    return scalar @{$self->young_ancestors};
+    return scalar $self->young_ancestors;
   }
 
   #Print a file, colourised by status
@@ -333,7 +333,7 @@ package Node {
     my $self = shift;
 
     #Print antecessors, if any
-    my %antecessors = map { $_ => 1 } (@{$self->parents}, @{$self->young_ancestors});
+    my %antecessors = map { $_ => 1 } ($self->parents, $self->young_ancestors);
     if (keys %antecessors) {
       $self->printf;
       print " relies on:\n";
@@ -345,7 +345,7 @@ package Node {
     }
 
     #Print progniture, if any
-    my %progeniture = map { $_ => 1 } (@{$self->children}, @{$self->old_descendants});
+    my %progeniture = map { $_ => 1 } ($self->children, $self->old_descendants);
     if (keys %progeniture) {
       $self->printf;
       print " is relied on by:\n";
@@ -419,8 +419,8 @@ if (@parents || @bereaved) {
 
   #Generate list of unique edges in descendant graph
   my %edges;
-  foreach my $descendant ($whither, @{$node{$whither}->descendants}) {
-    foreach my $child (@{$node{$descendant}->children}) {
+  foreach my $descendant ($whither, $node{$whither}->descendants) {
+    foreach my $child ($node{$descendant}->children) {
       my $descendantPath = $node{$descendant}->relative_path;
       my $childPath = $node{$child}->relative_path;
       $edges{$descendantPath, $childPath} = [ $descendantPath, $childPath ];
@@ -454,8 +454,8 @@ if (@parents || @bereaved) {
 
   #Generate list of unique edges in ancestor graph
   my %edges;
-  foreach my $ancestor ($whence, @{$node{$whence}->ancestors}) {
-    foreach my $parent (@{$node{$ancestor}->parents}) {
+  foreach my $ancestor ($whence, $node{$whence}->ancestors) {
+    foreach my $parent ($node{$ancestor}->parents) {
       my $ancestorPath = $node{$ancestor}->relative_path;
       my $parentPath = $node{$parent}->relative_path;
       $edges{$ancestorPath, $parentPath} = [ $ancestorPath, $parentPath ];
@@ -491,10 +491,10 @@ if (@parents || @bereaved) {
 
   #Generate edges for immediate family graph
   my %edges;
-  foreach my $parent (@{$node{$file}->parents}) {
+  foreach my $parent ($node{$file}->parents) {
     $edges{$node{$parent}->relative_path, $file} = [ $node{$parent}->relative_path, $file ];
   }
-  foreach my $child (@{$node{$file}->children}) {
+  foreach my $child ($node{$file}->children) {
     $edges{$file, $node{$child}->relative_path} = [ $file, $node{$child}->relative_path ];
   }
 
@@ -541,7 +541,7 @@ if (@parents || @bereaved) {
   exit unless exists $node{$file};
 
   #List parents
-  say $node{$_}->relative_path for @{$node{$file}->parents};
+  say $node{$_}->relative_path for $node{$file}->parents;
 
   #Done
   exit;
@@ -560,7 +560,7 @@ if (@parents || @bereaved) {
   exit unless exists $node{$file};
 
   #List children
-  say $node{$_}->relative_path for @{$node{$file}->children};
+  say $node{$_}->relative_path for $node{$file}->children;
 
   #Done
   exit;
@@ -621,7 +621,7 @@ if (@parents || @bereaved) {
     next unless $node{$file}->has_young_ancestors;
     $node{$file}->printf;
     say " relies on:";
-    foreach my $youngAncestor (@{$node{$file}->young_ancestors}) {
+    foreach my $youngAncestor ($node{$file}->young_ancestors) {
       print "  ";
       $node{$youngAncestor}->printf;
       print"\n";
@@ -697,13 +697,13 @@ sub add_parents {
 
   #Check for loops
   foreach my $parent (@parents) {
-    my %ancestors = map { $_ => 1 } @{$node{$parent}->ancestors};
+    my %ancestors = map { $_ => 1 } $node{$parent}->ancestors;
     next unless exists $ancestors{$child};
     die "ERROR: $child can't rely on $parent as this will create a loop\n";
   }
 
   #Join old and new parents
-  my %parents = map { $_ => 1 } @{$node{$child}->parents};
+  my %parents = map { $_ => 1 } $node{$child}->parents;
   $parents{$_}++ for @parents;
   $node{$child}->parents([ keys %parents ]);
 
@@ -713,9 +713,9 @@ sub add_parents {
 sub remove_parents {
 
   (my $child, my $bereaved) = @_;
-  my %oldParents = map { $_ => 1 } @{$node{$child}->parents};
+  my %oldParents = map { $_ => 1 } $node{$child}->parents;
   delete $oldParents{$_} for @bereaved;
-  @{$node{$child}->parents} = keys %oldParents;
+  $node{$child}->parents = keys %oldParents;
 
 }
 
@@ -725,7 +725,7 @@ sub write_reliances {
   open RELIES, ">", $reliesFile;
   foreach my $node (keys %node) {
 
-    say RELIES join("\t", ($node{$node}->git_path, $node{$node}->safe, $node{$node}->touch, @{$node{$node}->parents}));
+    say RELIES join("\t", ($node{$node}->git_path, $node{$node}->safe, $node{$node}->touch, $node{$node}->parents));
   
   }
   close RELIES;
