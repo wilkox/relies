@@ -136,12 +136,13 @@ package Node {
 
   #Get the last modified time for a file
   #  Last modified time is defined as:
-  #    If the file has been touched
-  #      Touched tim
   #    If there are no local modifications to the file:
   #      Timestamp for last git commit referencing that file
   #    If there are local modifications to the file:
   #      Timestamp for last filesystem modification
+  #    If the file has been touched more recently than either of
+  #     these times:
+  #     Use the touched time
   #
   # Returns a Date::Time object
   sub last_modified {
@@ -151,15 +152,9 @@ package Node {
     my $hasBeenModified = $self->has_been_modified;
     my $fileName = $self->relative_path;
 
-    #If the file has been touched, use the touched time
-    if ($self->touch) {
-
-      $modTime = DateTime::Format::ISO8601->parse_datetime($self->touch);
-      return $modTime;
-
     #If there are no local modifications, use the
     # git commit timestamp
-    } elsif (! $hasBeenModified) {
+    if (! $hasBeenModified) {
 
       my $gitTime = `git log -1 --format="%ad" --date=iso $fileName`;
 
@@ -179,8 +174,27 @@ package Node {
     
     }
 
+    #If the file has been touched more recently than
+    # modified, use the touched time
+    if ($self->touch) {
+      my $touchTime = DateTime::Format::ISO8601->parse_datetime($self->touch);
+      $modTime = $touchTime if DateTime->compare($touchTime, $modTime) == 1;
+    }
+
     return $modTime;
 
+  }
+
+  #Is a touch in effect?
+  sub touch_in_effect {
+  
+    my $self = shift;
+    return 0 unless $self->touch;
+    my $touchTime = DateTime::Format::ISO8601->parse_datetime($self->touch);
+    my $modTime = $self->last_modified;
+    my $touched = $touchTime == $modTime ? 1 : 0;
+    return $touched;
+  
   }
 
   #All ancestors of a node
@@ -320,7 +334,7 @@ package Node {
     #Print
     print color 'white';
     print " [";
-    print "touched " if $self->touch;
+    print "touched " if $self->touch_in_effect;
     print $self->last_modified_natural . " ago]";
     print color 'reset';
   }
