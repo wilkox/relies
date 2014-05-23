@@ -240,11 +240,9 @@ package Node {
 
     my $self = shift;
     my $modTime = $self->last_modified;
-    my @ancestors = $self->ancestors;
     my @youngAncestors;
 
-    foreach my $ancestor (@ancestors) {
-      next if $node{$ancestor}->safe;
+    foreach my $ancestor ($self->ancestors) {
       my $ancestorModTime = $node{$ancestor}->last_modified;
       my $compare = DateTime->compare($ancestorModTime, $modTime);
       push(@youngAncestors, $ancestor) if $compare == 1;
@@ -715,7 +713,7 @@ sub remove_parents {
   (my $child, my $bereaved) = @_;
   my %oldParents = map { $_ => 1 } $node{$child}->parents;
   delete $oldParents{$_} for @bereaved;
-  $node{$child}->parents = keys %oldParents;
+  $node{$child}->parents([keys %oldParents]);
 
 }
 
