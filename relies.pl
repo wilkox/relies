@@ -608,6 +608,9 @@ if (@parents || @bereaved) {
 
   say 'Checking all tracked files for problems...';
 
+  #Warn if a file list was passed
+  warn "Ignoring: ", join(' ', @ARGV), "\n" if @ARGV;
+
   #Read reliances store into memory
   &read_reliances;
 
