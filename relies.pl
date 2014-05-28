@@ -384,6 +384,7 @@ if (@parents || @bereaved) {
 
   #Read reliances store into memory
   &read_reliances;
+  &ensure_nodes_exist;
 
   #Update as needed
   &add_parents($_, @parents) for @fileList;
@@ -656,7 +657,7 @@ if (@parents || @bereaved) {
 ###################################################
 
 #Validate a file
-sub validate_file {
+sub validate_path {
 
   my ($file) = @_;
 
@@ -748,8 +749,18 @@ sub write_reliances {
 sub to_git_path {
 
   my $filePath = shift;
-  &validate_file($filePath);
+  &validate_path($filePath);
   my $relativePath = File::Spec->abs2rel(abs_path_nd($filePath), $gitRoot);
   return $relativePath;
 
+}
+
+#Check that all nodes in the reliance store refer to files that exist
+sub ensure_nodes_exist {
+  foreach my $node (values(%node)) {
+    my $path = $node->relative_path;
+    next if -e $path or -l $path;
+    die "ERROR: tracked file $path is missing. Run `relies rm $path`, `relies mv $path <new path>`, or restore the file to continue.\n"
+  }
+  return 1;
 }
