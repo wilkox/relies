@@ -80,30 +80,47 @@ package Node {
   use Moose;
   use Term::ANSIColor;
 
+  #Build the required attributes from the .relies line
+  around BUILDARGS => sub { 
+    shift; #Moose passes some other
+    shift; # stuff that we don't want
+    my $relies_line = shift;
+    (my $git_path, my $safe, my $touch, my @parents) = split(/\t/, $relies_line);
+    return {
+      git_path => $git_path,
+      safe => $safe,
+      touch => $touch,
+      parents => [ @parents ], 
+    };
+  };
+
   ###
   # These attributes come from .relies - they are required for each node and
   # are set at construction
   #The path passed to relies
-  has 'git_path', is => 'ro', isa => 'Str';
+  has 'git_path', is => 'ro', isa => 'Str', required => 1;
   #
   #Parents of this file (i.e. reliances explicitly set by the user)
-  has 'parents', is => 'rw', isa => 'ArrayRef', auto_deref => 1;
+  has 'parents', 
+    is => 'rw', 
+    isa => 'ArrayRef', 
+    auto_deref => 1,
+    required => 1,
+    ;
   #
   #Safe flag
-  has 'safe', is => 'rw', isa => 'Int';
+  has 'safe', is => 'rw', isa => 'Int', required => 1;
   #
   #Touch date
-  has 'touch', is => 'rw', isa => 'Str';
-  #
-  #The relative path
-  has 'relative_path', is => 'ro', isa => 'Str', builder => '_build_relative_path', lazy => 1;
-  #
-  #
+  has 'touch', is => 'rw', isa => 'Str', required => 1;
   ##
 
   ###
   # These attributes are lazy and are only populated when the relevent
   # accessor is called
+  #The relative path
+  has 'relative_path', is => 'ro', isa => 'Str', builder => '_build_relative_path', lazy => 1;
+  #
   #Has the file been modified?
   has 'has_been_modified', is => 'ro', isa => 'Int', builder => '_build_has_been_modified', lazy => 1;
   #
@@ -113,26 +130,9 @@ package Node {
   #Is a touch in effect?
   has 'touch_in_effect', is => 'rw', isa => 'Int', builder => '_build_touch_in_effect', lazy => 1;
   #
-  ##
-
-
   #All ancestors of a node
-  #TODO cache (careful!)
-  sub ancestors {
-
-    my $self = shift;
-    my %ancestors;
-
-    foreach my $parentGitPath ($self->parents) {
-      my $parent = $node{$parentGitPath};
-      $ancestors{$parentGitPath}++;
-      $ancestors{$_}++ for $node{$parentGitPath}->ancestors;
-    }
-
-    return keys(%ancestors);
-
-  }
-
+  has 'ancestors', is => 'rw', isa => 'ArrayRef', auto_deref => 1, builder => '_build_ancestors', lazy => 1;
+  ##
   #All descendants of a node
   sub descendants {
 
@@ -335,6 +335,22 @@ package Node {
     my $gitStatus = `git status -s $fileName`;
     my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
     return $hasBeenModified;
+
+  }
+
+  #All ancestors of a node
+  sub _build_ancestors {
+
+    my $self = shift;
+    my %ancestors;
+
+    foreach my $parentGitPath ($self->parents) {
+      my $parent = $node{$parentGitPath};
+      $ancestors{$parentGitPath}++;
+      $ancestors{$_}++ for $node{$parentGitPath}->ancestors;
+    }
+
+    return [ keys(%ancestors) ];
 
   }
 
@@ -706,10 +722,8 @@ sub read_reliances {
   open RELIES, "<", $reliesFile;
   while (<RELIES>) {
     chomp;
-    my @row = split(/\t/, $_);
-    (my $gitPath, my $safe, my $touch, my @parents) = @row;
-    my $child = Node->new( git_path => $gitPath, safe => $safe, touch => $touch, parents => [ @parents ]);
-    $node{$gitPath} = $child;
+    my $child = Node->new($_);
+    $node{$child->git_path} = $child;
   }
   close RELIES;
 
@@ -723,7 +737,7 @@ sub add_parents {
   #Create nodes for child and parent files if they are new
   foreach my $gitPath (@_) {
     next if exists $node{$gitPath};
-    my $newNode = Node->new( git_path => $gitPath, safe => 0, touch => 0, parents => [ ]);
+    my $newNode = Node->new( git_path => $gitPath, safe => 0, touch => 0, parents => [ ] );
     $node{$gitPath} = $newNode;
   }
 
