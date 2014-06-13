@@ -98,37 +98,23 @@ package Node {
   #The relative path
   has 'relative_path', is => 'ro', isa => 'Str', builder => '_build_relative_path', lazy => 1;
   #
+  #
   ##
 
   ###
   # These attributes are lazy and are only populated when the relevent
   # accessor is called
+  #Has the file been modified?
   has 'has_been_modified', is => 'ro', isa => 'Int', builder => '_build_has_been_modified', lazy => 1;
   #
+  #Last modified DateTime
   has 'last_modified', is => 'ro', isa => 'DateTime', builder => '_build_last_modified', lazy => 1;
-  ##
-  #Format the last modified time, in natural language
-  sub last_modified_natural {
-
-    my $self = shift;
-    my $span = DateTime::Format::Human::Duration->new();
-    my $now = DateTime->now();
-    my $ago = $span->format_duration_between($now, $self->last_modified, 'significant_units' => 1);
-    return $ago;
-  
-  }
-
+  #
   #Is a touch in effect?
-  sub touch_in_effect {
-  
-    my $self = shift;
-    return 0 unless $self->touch;
-    my $touchTime = DateTime::Format::ISO8601->parse_datetime($self->touch);
-    my $modTime = $self->last_modified;
-    my $touched = $touchTime == $modTime ? 1 : 0;
-    return $touched;
-  
-  }
+  has 'touch_in_effect', is => 'rw', isa => 'Int', builder => '_build_touch_in_effect', lazy => 1;
+  #
+  ##
+
 
   #All ancestors of a node
   #TODO cache (careful!)
@@ -303,11 +289,34 @@ package Node {
 
   }
 
+  #Format the last modified time, in natural language
+  sub last_modified_natural {
+
+    my $self = shift;
+    my $span = DateTime::Format::Human::Duration->new();
+    my $now = DateTime->now();
+    my $ago = $span->format_duration_between($now, $self->last_modified, 'significant_units' => 1);
+    return $ago;
+  
+  }
+
   #######################
   ###                 ###
   ### BUILDER METHODS ###
   ###                 ###
   #######################
+
+  #Is a touch in effect?
+  sub _build_touch_in_effect {
+  
+    my $self = shift;
+    return 0 unless $self->touch;
+    my $touchTime = DateTime::Format::ISO8601->parse_datetime($self->touch);
+    my $modTime = $self->last_modified;
+    my $touched = $touchTime == $modTime ? 1 : 0;
+    return $touched;
+  
+  }
 
   #Path relative to current working directory
   sub _build_relative_path {
