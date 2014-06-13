@@ -103,18 +103,7 @@ package Node {
   ###
   # These attributes are lazy and are only populated when the relevent
   # accessor is called
-
-  #Get the git modification status of a file
-  #TODO redefine as an attribute to prevent recalculation
-  sub has_been_modified {
-
-    my $self = shift;
-    my $fileName = $self->relative_path;
-    my $gitStatus = `git status -s $fileName`;
-    my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
-    return $hasBeenModified;
-
-  }
+  has 'has_been_modified', is => 'ro', isa => 'Int', builder => '_build_has_been_modified', lazy => 1;
 
   #Format the last modified time, in natural language
   sub last_modified_natural {
@@ -375,6 +364,17 @@ package Node {
     my $self = shift;
     my $relativePath = File::Spec->abs2rel($gitRoot . "/" . $self->git_path);
     return $relativePath;
+
+  }
+
+  #Get the git modification status of a file
+  sub _build_has_been_modified {
+
+    my $self = shift;
+    my $fileName = $self->relative_path;
+    my $gitStatus = `git status -s $fileName`;
+    my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
+    return $hasBeenModified;
 
   }
 
