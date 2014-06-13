@@ -104,7 +104,9 @@ package Node {
   # These attributes are lazy and are only populated when the relevent
   # accessor is called
   has 'has_been_modified', is => 'ro', isa => 'Int', builder => '_build_has_been_modified', lazy => 1;
-
+  #
+  has 'last_modified', is => 'ro', isa => 'DateTime', builder => '_build_last_modified', lazy => 1;
+  ##
   #Format the last modified time, in natural language
   sub last_modified_natural {
 
@@ -114,57 +116,6 @@ package Node {
     my $ago = $span->format_duration_between($now, $self->last_modified, 'significant_units' => 1);
     return $ago;
   
-  }
-
-  #Get the last modified time for a file
-  #  Last modified time is defined as:
-  #    If there are no local modifications to the file:
-  #      Timestamp for last git commit referencing that file
-  #    If there are local modifications to the file:
-  #      Timestamp for last filesystem modification
-  #    If the file has been touched more recently than either of
-  #     these times:
-  #     Use the touched time
-  #
-  # Returns a Date::Time object
-  sub last_modified {
-
-    my $self = shift;
-    my $modTime;
-    my $hasBeenModified = $self->has_been_modified;
-    my $fileName = $self->relative_path;
-
-    #If there are no local modifications, use the
-    # git commit timestamp
-    if (! $hasBeenModified) {
-
-      my $gitTime = `git log -1 --format="%ad" --date=iso $fileName`;
-
-      #Need to do a little parsing on date as git doesn't output
-      # correct ISO8601 format (thanks...)
-      my $ISO8601 = qr/^(?<date>\d{4}-\d{2}-\d{2})\s(?<time>\d{2}:\d{2}:\d{2})\s\+(?<timezonehour>\d{2})(?<timezoneminute>\d{2})$/;
-      die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n$gitTime\n" unless $gitTime =~ /$ISO8601/;
-      $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
-      $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
-    
-    #If there are local modifications, use the filesystem's
-    # last modified timestamp
-    } else {
-
-      my $fsTime = (stat($fileName))[9];
-      $modTime = DateTime->from_epoch( epoch => $fsTime );
-    
-    }
-
-    #If the file has been touched more recently than
-    # modified, use the touched time
-    if ($self->touch) {
-      my $touchTime = DateTime::Format::ISO8601->parse_datetime($self->touch);
-      $modTime = $touchTime if DateTime->compare($touchTime, $modTime) == 1;
-    }
-
-    return $modTime;
-
   }
 
   #Is a touch in effect?
@@ -375,6 +326,57 @@ package Node {
     my $gitStatus = `git status -s $fileName`;
     my $hasBeenModified = $gitStatus eq "" ? 0 : 1;
     return $hasBeenModified;
+
+  }
+
+  #Get the last modified time for a file
+  #  Last modified time is defined as:
+  #    If there are no local modifications to the file:
+  #      Timestamp for last git commit referencing that file
+  #    If there are local modifications to the file:
+  #      Timestamp for last filesystem modification
+  #    If the file has been touched more recently than either of
+  #     these times:
+  #     Use the touched time
+  #
+  # Returns a Date::Time object
+  sub _build_last_modified {
+
+    my $self = shift;
+    my $modTime;
+    my $hasBeenModified = $self->has_been_modified;
+    my $fileName = $self->relative_path;
+
+    #If there are no local modifications, use the
+    # git commit timestamp
+    if (! $hasBeenModified) {
+
+      my $gitTime = `git log -1 --format="%ad" --date=iso $fileName`;
+
+      #Need to do a little parsing on date as git doesn't output
+      # correct ISO8601 format (thanks...)
+      my $ISO8601 = qr/^(?<date>\d{4}-\d{2}-\d{2})\s(?<time>\d{2}:\d{2}:\d{2})\s\+(?<timezonehour>\d{2})(?<timezoneminute>\d{2})$/;
+      die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n$gitTime\n" unless $gitTime =~ /$ISO8601/;
+      $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
+      $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
+    
+    #If there are local modifications, use the filesystem's
+    # last modified timestamp
+    } else {
+
+      my $fsTime = (stat($fileName))[9];
+      $modTime = DateTime->from_epoch( epoch => $fsTime );
+    
+    }
+
+    #If the file has been touched more recently than
+    # modified, use the touched time
+    if ($self->touch) {
+      my $touchTime = DateTime::Format::ISO8601->parse_datetime($self->touch);
+      $modTime = $touchTime if DateTime->compare($touchTime, $modTime) == 1;
+    }
+
+    return $modTime;
 
   }
 
