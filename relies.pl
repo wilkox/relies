@@ -128,27 +128,15 @@ package Node {
   has 'last_modified', is => 'ro', isa => 'DateTime', builder => '_build_last_modified', lazy => 1;
   #
   #Is a touch in effect?
-  has 'touch_in_effect', is => 'rw', isa => 'Int', builder => '_build_touch_in_effect', lazy => 1;
+  has 'touch_in_effect', is => 'ro', isa => 'Int', builder => '_build_touch_in_effect', lazy => 1;
   #
   #All ancestors of a node
-  has 'ancestors', is => 'rw', isa => 'ArrayRef', auto_deref => 1, builder => '_build_ancestors', lazy => 1;
-  ##
+  has 'ancestors', is => 'ro', isa => 'ArrayRef', auto_deref => 1, builder => '_build_ancestors', lazy => 1;
+  #
   #All descendants of a node
-  sub descendants {
-
-    my $self = shift;
-    my %descendants;
-
-    foreach my $childGitPath ($self->children) {
-      my $child = $node{$childGitPath};
-      $descendants{$childGitPath}++;
-      $descendants{$_}++ for $node{$childGitPath}->children;
-    }
-
-    return keys(%descendants);
+  has 'descendants', is => 'ro', isa => 'ArrayRef', auto_deref => 1, builder => '_build_descendants', lazy => 1;
+  ##
   
-  }
-
   #Descendants with a mod time < than this file's mod time
   #TODO cache
   sub old_descendants {
@@ -352,6 +340,22 @@ package Node {
 
     return [ keys(%ancestors) ];
 
+  }
+
+  #All descendants of a node
+  sub _build_descendants {
+
+    my $self = shift;
+    my %descendants;
+
+    foreach my $childGitPath ($self->children) {
+      my $child = $node{$childGitPath};
+      $descendants{$childGitPath}++;
+      $descendants{$_}++ for $node{$childGitPath}->children;
+    }
+
+    return [ keys(%descendants) ];
+  
   }
 
   #Get the last modified time for a file
