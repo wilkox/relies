@@ -18,15 +18,6 @@ use File::Spec;
 use Graph::Easy;
 $|++;
 
-#Formatter to write ISO8601 timestamps
-# From https://movieos.org/blog/2006/perl-datetime-iso8601/
-sub DateTime::iso8601_with_tz {
-  my $self = shift;
-  my $val = $self->strftime('%FT%T%z');
-  $val =~ s/(\d\d)$/:$1/;
-  return $val;
-}
-
 #Get the git repository root path
 my $gitRoot = `git rev-parse --show-toplevel` or die "\n";
 chomp $gitRoot;
@@ -89,27 +80,29 @@ package Node {
   use Moose;
   use Term::ANSIColor;
 
+  ###
+  # These attributes come from .relies - they are required for each node and
+  # are set at construction
   #The path passed to relies
   has 'git_path', is => 'ro', isa => 'Str';
-
+  #
   #Parents of this file (i.e. reliances explicitly set by the user)
   has 'parents', is => 'rw', isa => 'ArrayRef', auto_deref => 1;
-
+  #
   #Safe flag
   has 'safe', is => 'rw', isa => 'Int';
-
+  #
   #Touch date
   has 'touch', is => 'rw', isa => 'Str';
+  #
+  #The relative path
+  has 'relative_path', is => 'ro', isa => 'Str', builder => '_build_relative_path', lazy => 1;
+  #
+  ##
 
-  #Path relative to current working directory
-  #TODO redefine as an attribute to prevent recomputation
-  sub relative_path {
-
-    my $self = shift;
-    my $relativePath = File::Spec->abs2rel($gitRoot . "/" . $self->git_path);
-    return $relativePath;
-
-  }
+  ###
+  # These attributes are lazy and are only populated when the relevent
+  # accessor is called
 
   #Get the git modification status of a file
   #TODO redefine as an attribute to prevent recalculation
@@ -367,6 +360,21 @@ package Node {
         print "\n";
       }
     }
+
+  }
+
+  #######################
+  ###                 ###
+  ### BUILDER METHODS ###
+  ###                 ###
+  #######################
+
+  #Path relative to current working directory
+  sub _build_relative_path {
+
+    my $self = shift;
+    my $relativePath = File::Spec->abs2rel($gitRoot . "/" . $self->git_path);
+    return $relativePath;
 
   }
 
@@ -681,7 +689,7 @@ sub read_reliances {
 
   if (! -e $reliesFile) {
     say "No .relies for this repository - type 'touch .relies' to create one";
-    return;
+    exit;
   }
 
   open RELIES, "<", $reliesFile;
@@ -763,4 +771,13 @@ sub ensure_nodes_exist {
     die "ERROR: tracked file $path is missing. Run `relies rm $path`, `relies mv $path <new path>`, or restore the file to continue.\n"
   }
   return 1;
+}
+
+#Formatter to write ISO8601 timestamps
+# From https://movieos.org/blog/2006/perl-datetime-iso8601/
+sub DateTime::iso8601_with_tz {
+  my $self = shift;
+  my $val = $self->strftime('%FT%T%z');
+  $val =~ s/(\d\d)$/:$1/;
+  return $val;
 }
