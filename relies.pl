@@ -7,6 +7,7 @@
 ################
 
 use Modern::Perl 2013;
+use Moose::Meta::Attribute::Native::Trait::Array;
 use autodie;
 use Getopt::Long;
 use Cwd::Ext 'abs_path_nd';
@@ -97,9 +98,10 @@ package Node {
   ###
   # These attributes come from .relies - they are required for each node and
   # are set at construction
+
   #The path passed to relies
   has 'git_path', is => 'ro', isa => 'Str', required => 1;
-  #
+   
   #Parents of this file (i.e. reliances explicitly set by the user)
   has 'parents', 
     is => 'rw', 
@@ -107,39 +109,89 @@ package Node {
     auto_deref => 1,
     required => 1,
     ;
-  #
+   
   #Safe flag
   has 'safe', is => 'rw', isa => 'Int', required => 1;
-  #
+   
   #Touch date
   has 'touch', is => 'rw', isa => 'Str', required => 1;
-  ##
+
+  #
+  ###
 
   ###
   # These attributes are lazy and are only populated when the relevent
   # accessor is called
+
   #The relative path
   has 'relative_path', is => 'ro', isa => 'Str', builder => '_build_relative_path', lazy => 1;
-  #
+  
   #Has the file been modified?
   has 'has_been_modified', is => 'ro', isa => 'Int', builder => '_build_has_been_modified', lazy => 1;
-  #
+  
   #Last modified DateTime
   has 'last_modified', is => 'ro', isa => 'DateTime', builder => '_build_last_modified', lazy => 1;
-  #
+  
   #Is a touch in effect?
   has 'touch_in_effect', is => 'ro', isa => 'Int', builder => '_build_touch_in_effect', lazy => 1;
-  #
+  
   #All ancestors of a node
   has 'ancestors', is => 'ro', isa => 'ArrayRef', auto_deref => 1, builder => '_build_ancestors', lazy => 1;
-  #
+  
   #All descendants of a node
   has 'descendants', is => 'ro', isa => 'ArrayRef', auto_deref => 1, builder => '_build_descendants', lazy => 1;
-  ##
-  
+
   #Descendants with a mod time < than this file's mod time
-  #TODO cache
-  sub old_descendants {
+  has 'old_descendants', is => 'ro', isa => 'ArrayRef', traits => ['Array'], handles => {has_old_descendants => 'count', all_old_descendants => 'elements'}, builder => '_build_descendants', lazy => 1;
+
+  #Ancestors with a mod time > than this file's mod time
+  has 'young_ancestors', is => 'ro', isa => 'ArrayRef', traits => ['Array'], handles => {has_young_ancestors => 'count', all_young_ancestors => 'elements'}, builder => '_build_young_ancestors', lazy => 1;
+  
+  #All children of a node
+  has 'children', is => 'ro', isa => 'ArrayRef', auto_deref => 1, builder => '_build_children', lazy => 1;
+
+  #
+  ###
+
+  #######################
+  ###                 ###
+  ### BUILDER METHODS ###
+  ###                 ###
+  #######################
+
+  #All children of a node
+  sub _build_children {
+  
+    my $self = shift;
+    my %children;
+
+    foreach my $potentialChild (keys %node) {
+      my %actualParents = map { $_ => 1 } $node{$potentialChild}->parents;
+      $children{$potentialChild}++ if exists $actualParents{$self->git_path};
+    }
+
+    return [ keys %children ];
+  
+  }
+
+  #Ancestors with a mod time > than this file's mod time
+  sub _build_young_ancestors {
+
+    my $self = shift;
+    my $modTime = $self->last_modified;
+    my @youngAncestors;
+
+    foreach my $ancestor ($self->ancestors) {
+      my $ancestorModTime = $node{$ancestor}->last_modified;
+      my $compare = DateTime->compare($ancestorModTime, $modTime);
+      push(@youngAncestors, $ancestor) if $compare == 1;
+    }
+
+    return [@youngAncestors];
+  }
+
+  #Descendants with a mod time < than this file's mod time
+  sub _build_old_descendants {
 
     my $self = shift;
     my $modTime = $self->last_modified;
@@ -155,144 +207,6 @@ package Node {
     return @oldDescendants;
   }
 
-  #Ancestors with a mod time > than this file's mod time
-  #TODO cache
-  sub young_ancestors {
-
-    my $self = shift;
-    my $modTime = $self->last_modified;
-    my @youngAncestors;
-
-    foreach my $ancestor ($self->ancestors) {
-      my $ancestorModTime = $node{$ancestor}->last_modified;
-      my $compare = DateTime->compare($ancestorModTime, $modTime);
-      push(@youngAncestors, $ancestor) if $compare == 1;
-    }
-    return @youngAncestors; 
-  }
-
-  #All children of a node
-  #TODO cache
-  sub children {
-  
-    my $self = shift;
-    my %children;
-
-    foreach my $potentialChild (keys %node) {
-      my %actualParents = map { $_ => 1 } $node{$potentialChild}->parents;
-      $children{$potentialChild}++ if exists $actualParents{$self->git_path};
-    }
-
-    return keys %children;
-  
-  }
-
-  #Convenience
-  #TODO redefine as attribute to prevent recalculation
-  sub has_old_descendants {
-    my $self = shift;
-    return scalar $self->old_descendants;
-  }
-
-  #Convenience
-  #TODO redefine as attribute to prevent recalculation
-  sub has_young_ancestors {
-    my $self = shift;
-    return 0 if $self->safe; #A safed file can't have any problems
-    return scalar $self->young_ancestors;
-  }
-
-  #Print a file, colourised by status
-  sub printf { 
-
-    my $self = shift;
-
-    # Blue    : safed, no old descendants
-    # Green   : no young ancestors, no old descendants
-    # Yellow  : no young ancestors, has old descendants
-    # Red     : has young ancestors
-    
-    #Blue if safed and no old descendants
-    if ($self->safe and not $self->has_old_descendants) {
-      print color 'blue';
-      print $self->relative_path;
-
-    #Red if there are young ancestors
-    } elsif ($self->has_young_ancestors) {
-      print color 'red';
-      print $self->relative_path;
-
-    #Yellow if there are old descendants but no young ancestors
-    } elsif ((not $self->has_young_ancestors) and $self->has_old_descendants) {
-      print color 'yellow';
-      print $self->relative_path;
-
-    #Green if there are no young ancestors and no old descendants
-    } elsif ((not $self->has_young_ancestors) and (not $self->has_old_descendants)) {
-      print color 'green';
-      print $self->relative_path;
-
-    #If there are reliance problems but no file modifications, something
-    # has gone horribly wrong
-    } else {
-      die "ERROR: Something has gone horribly wrong";
-    }
-
-    #Print
-    print color 'white';
-    print " [";
-    print "touched " if $self->touch_in_effect;
-    print $self->last_modified_natural . " ago]";
-    print color 'reset';
-  }
-
-  #Print reliances
-  sub printf_reliances {
-
-    my $self = shift;
-
-    #Print antecessors, if any
-    my %antecessors = map { $_ => 1 } ($self->parents, $self->young_ancestors);
-    if (keys %antecessors) {
-      $self->printf;
-      print " relies on:\n";
-      foreach my $antecessor (keys %antecessors) {
-        print "  ";
-        $node{$antecessor}->printf;
-        print "\n";
-      }
-    }
-
-    #Print progniture, if any
-    my %progeniture = map { $_ => 1 } ($self->children, $self->old_descendants);
-    if (keys %progeniture) {
-      $self->printf;
-      print " is relied on by:\n";
-      foreach my $progeny (keys %progeniture) {
-        print "  ";
-        $node{$progeny}->printf;
-        print "\n";
-      }
-    }
-
-  }
-
-  #Format the last modified time, in natural language
-  sub last_modified_natural {
-
-    my $self = shift;
-    my $span = DateTime::Format::Human::Duration->new();
-    my $now = DateTime->now();
-    my $ago = $span->format_duration_between($now, $self->last_modified, 'significant_units' => 1);
-    return $ago;
-  
-  }
-
-  #######################
-  ###                 ###
-  ### BUILDER METHODS ###
-  ###                 ###
-  #######################
 
   #Is a touch in effect?
   sub _build_touch_in_effect {
@@ -409,6 +323,97 @@ package Node {
 
   }
 
+  #####################
+  ###               ###
+  ### CLASS METHODS ###
+  ###               ###
+  #####################
+
+  #Print a file, colourised by status
+  sub printf { 
+
+    my $self = shift;
+
+    # Blue    : safed, no old descendants
+    # Green   : no young ancestors, no old descendants
+    # Yellow  : no young ancestors, has old descendants
+    # Red     : has young ancestors
+
+    #Blue if safed and no old descendants
+    if ($self->safe and not $self->has_old_descendants) {
+      print color 'blue';
+      print $self->relative_path;
+
+    #Red if there are young ancestors
+    } elsif ($self->has_young_ancestors) {
+      print color 'red';
+      print $self->relative_path;
+
+    #Yellow if there are old descendants but no young ancestors
+    } elsif ((not $self->has_young_ancestors) and $self->has_old_descendants) {
+      print color 'yellow';
+      print $self->relative_path;
+
+    #Green if there are no young ancestors and no old descendants
+    } elsif ((not $self->has_young_ancestors) and (not $self->has_old_descendants)) {
+      print color 'green';
+      print $self->relative_path;
+
+    #If there are reliance problems but no file modifications, something
+    # has gone horribly wrong
+    } else {
+      die "ERROR: Something has gone horribly wrong";
+    }
+
+    #Print
+    print color 'white';
+    print " [";
+    print "touched " if $self->touch_in_effect;
+    print $self->last_modified_natural . " ago]";
+    print color 'reset';
+  }
+
+  #Print reliances for a file
+  sub printf_reliances {
+
+    my $self = shift;
+
+    #Print antecessors, if any
+    my %antecessors = map { $_ => 1 } ($self->parents, $self->all_young_ancestors);
+    if (keys %antecessors) {
+      $self->printf;
+      print " relies on:\n";
+      foreach my $antecessor (keys %antecessors) {
+        print "  ";
+        $node{$antecessor}->printf;
+        print "\n";
+      }
+    }
+
+    #Print progniture, if any
+    my %progeniture = map { $_ => 1 } ($self->children, $self->all_old_descendants);
+    if (keys %progeniture) {
+      $self->printf;
+      print " is relied on by:\n";
+      foreach my $progeny (keys %progeniture) {
+        print "  ";
+        $node{$progeny}->printf;
+        print "\n";
+      }
+    }
+
+  }
+
+  #Format the last modified time, in natural language
+  sub last_modified_natural {
+
+    my $self = shift;
+    my $span = DateTime::Format::Human::Duration->new();
+    my $now = DateTime->now();
+    my $ago = $span->format_duration_between($now, $self->last_modified, 'significant_units' => 1);
+    return $ago;
+  
+  }
 }
 
 ##############################
@@ -673,7 +678,7 @@ if (@parents || @bereaved) {
     next unless $node{$file}->has_young_ancestors;
     $node{$file}->printf;
     say " relies on:";
-    foreach my $youngAncestor ($node{$file}->young_ancestors) {
+    foreach my $youngAncestor ($node{$file}->all_young_ancestors) {
       print "  ";
       $node{$youngAncestor}->printf;
       print"\n";
