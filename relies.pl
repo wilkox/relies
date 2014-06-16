@@ -102,14 +102,13 @@ package Node {
     is => 'rw', 
     isa => 'ArrayRef', 
     auto_deref => 1,
-    required => 1,
     ;
    
   #Safe flag
-  has 'safe', is => 'rw', isa => 'Int', required => 1;
+  has 'safe', is => 'rw', isa => 'Int';
    
   #Touch date
-  has 'touch', is => 'rw', isa => 'Str', required => 1;
+  has 'touch', is => 'rw', isa => 'Str';
 
   #
   ###
@@ -728,13 +727,20 @@ sub read_reliances {
     (my $git_path, my $safe, my $touch, my @parents) = split(/\t/, $_);
 
     #Check if nodes already exist for the parents, and create them if they don't
-    #foreach my $parent (@parents) {
-    #next if exists $node{$parent}
-    #}
+
+    foreach my $parent (@parents) {
+      next if exists $node{$parent};
+      my $parent = Node->new(git_path => $parent);
+    }
 
     #Build node for the child
-    # TODO UPDATE IF ALREADY EXISTS
-    my $child = Node->new(git_path => $git_path, safe => $safe, touch => $touch, parents => [ @parents ]);
+    if (exists $node{$git_path}) {
+      $node{$git_path}->safe($safe);
+      $node{$git_path}->touch($touch);
+      $node{$git_path}->parents([ @parents ]);
+    } else {
+      Node->new(git_path => $git_path, safe => $safe, touch => $touch, parents => [ @parents ]);
+    }
   }
   close RELIES;
 
