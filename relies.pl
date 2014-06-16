@@ -81,6 +81,15 @@ package Node {
   use Moose;
   use Term::ANSIColor;
 
+  sub BUILD {
+  
+    #Ensure self is in the node store
+    my $self = shift;
+    my $gitPath = $self->git_path;
+    $node{$gitPath} = $self;
+  
+  }
+
   ###
   # These attributes come from .relies - they are required for each node and
   # are set at construction
@@ -714,9 +723,18 @@ sub read_reliances {
   open RELIES, "<", $reliesFile;
   while (<RELIES>) {
     chomp;
+
+    #Get attributes from .relies
     (my $git_path, my $safe, my $touch, my @parents) = split(/\t/, $_);
+
+    #Check if nodes already exist for the parents, and create them if they don't
+    #foreach my $parent (@parents) {
+    #next if exists $node{$parent}
+    #}
+
+    #Build node for the child
+    # TODO UPDATE IF ALREADY EXISTS
     my $child = Node->new(git_path => $git_path, safe => $safe, touch => $touch, parents => [ @parents ]);
-    $node{$child->git_path} = $child;
   }
   close RELIES;
 
@@ -738,7 +756,6 @@ sub add_parents {
   foreach my $gitPath (@_) {
     next if exists $node{$gitPath};
     my $newNode = Node->new( git_path => $gitPath, safe => 0, touch => 0, parents => [ ] );
-    $node{$gitPath} = $newNode;
   }
 
   #Check for loops
