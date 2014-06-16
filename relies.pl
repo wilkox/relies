@@ -142,7 +142,7 @@ package Node {
   has 'descendants', is => 'ro', isa => 'ArrayRef', auto_deref => 1, builder => '_build_descendants', lazy => 1;
 
   #Descendants with a mod time < than this file's mod time
-  has 'old_descendants', is => 'ro', isa => 'ArrayRef', traits => ['Array'], handles => {has_old_descendants => 'count', all_old_descendants => 'elements'}, builder => '_build_descendants', lazy => 1;
+  has 'old_descendants', is => 'ro', isa => 'ArrayRef', traits => ['Array'], handles => {has_old_descendants => 'count', all_old_descendants => 'elements'}, builder => '_build_old_descendants', lazy => 1;
 
   #Ancestors with a mod time > than this file's mod time
   has 'young_ancestors', is => 'ro', isa => 'ArrayRef', traits => ['Array'], handles => {has_young_ancestors => 'count', all_young_ancestors => 'elements'}, builder => '_build_young_ancestors', lazy => 1;
@@ -204,7 +204,7 @@ package Node {
       my $compare = DateTime->compare($descendantModTime, $modTime);
       push(@oldDescendants, $descendant) if $compare == -1;
     }
-    return @oldDescendants;
+    return [@oldDescendants];
   }
 
 
@@ -428,7 +428,6 @@ if (@parents || @bereaved) {
 
   #Read reliances store into memory
   &read_reliances;
-  &ensure_nodes_exist;
 
   #Update as needed
   &add_parents($_, @parents) for @fileList;
@@ -499,7 +498,6 @@ if (@parents || @bereaved) {
   exit;
 
 #Graph ancestors
-#TODO change to case/switch
 } elsif ($command eq 'whence') {
 
   #Only plot one file
@@ -674,7 +672,6 @@ if (@parents || @bereaved) {
   #Loop over all files
   foreach my $file (keys %node) {
 
-    #TODO this won't be necessary once young_ancestors is cached
     next unless $node{$file}->has_young_ancestors;
     $node{$file}->printf;
     say " relies on:";
@@ -736,6 +733,13 @@ sub read_reliances {
   }
   close RELIES;
 
+  #Check that all referred nodes actually exist
+  foreach my $node (values(%node)) {
+    my $path = $node->relative_path;
+    next if -e $path or -l $path;
+    die "ERROR: tracked file $path is missing. Run `relies rm $path`, `relies mv $path <new path>`, or restore the file to continue.\n"
+  }
+
 }
 
 #Add new reliances
@@ -795,16 +799,6 @@ sub to_git_path {
   my $relativePath = File::Spec->abs2rel(abs_path_nd($filePath), $gitRoot);
   return $relativePath;
 
-}
-
-#Check that all nodes in the reliance store refer to files that exist
-sub ensure_nodes_exist {
-  foreach my $node (values(%node)) {
-    my $path = $node->relative_path;
-    next if -e $path or -l $path;
-    die "ERROR: tracked file $path is missing. Run `relies rm $path`, `relies mv $path <new path>`, or restore the file to continue.\n"
-  }
-  return 1;
 }
 
 #Formatter to write ISO8601 timestamps

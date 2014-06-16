@@ -2,7 +2,6 @@
 This is not finished. Use it at your own risk.
 
 #TODOs
-- Lots of refactoring
 - Implement `relies rm`
 - Implement `relies mv`
 - Hooks into git, such that `git rm` and `git mv` are seamlessly tracked by relies
