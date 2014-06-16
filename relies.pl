@@ -87,7 +87,21 @@ package Node {
     my $self = shift;
     my $gitPath = $self->git_path;
     $node{$gitPath} = $self;
-  
+
+    #Ensure the parents of this node know
+    # it is a child
+    foreach my $parent ($self->parents) {
+
+      #Create the parent node if it doesn't
+      # already exist
+      unless (exists $node{$parent}) {
+        $node{$parent} = Node->new(git_path => $parent);
+      }
+
+      #Add self to the list of children
+      my %children = map {$_ => 1} ($node{$parent}->children, $self->git_path);
+      $node{$parent}->children([ keys %children ]);
+    }
   }
 
   ###
@@ -102,7 +116,14 @@ package Node {
     is => 'rw', 
     isa => 'ArrayRef', 
     auto_deref => 1,
-    ;
+  ;
+
+  #Children of this file (i.e. reliances explicitly set by the user)
+  has 'children', 
+    is => 'rw', 
+    isa => 'ArrayRef', 
+    auto_deref => 1,
+  ;
    
   #Safe flag
   has 'safe', is => 'rw', isa => 'Int';
@@ -141,9 +162,6 @@ package Node {
   #Ancestors with a mod time > than this file's mod time
   has 'young_ancestors', is => 'ro', isa => 'ArrayRef', traits => ['Array'], handles => {has_young_ancestors => 'count', all_young_ancestors => 'elements'}, builder => '_build_young_ancestors', lazy => 1;
   
-  #All children of a node
-  has 'children', is => 'ro', isa => 'ArrayRef', auto_deref => 1, builder => '_build_children', lazy => 1;
-
   #
   ###
 
@@ -152,21 +170,6 @@ package Node {
   ### BUILDER METHODS ###
   ###                 ###
   #######################
-
-  #All children of a node
-  sub _build_children {
-  
-    my $self = shift;
-    my %children;
-
-    foreach my $potentialChild (keys %node) {
-      my %actualParents = map { $_ => 1 } $node{$potentialChild}->parents;
-      $children{$potentialChild}++ if exists $actualParents{$self->git_path};
-    }
-
-    return [ keys %children ];
-  
-  }
 
   #Ancestors with a mod time > than this file's mod time
   sub _build_young_ancestors {
