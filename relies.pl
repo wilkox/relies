@@ -81,20 +81,6 @@ package Node {
   use Moose;
   use Term::ANSIColor;
 
-  #Build the required attributes from the .relies line
-  around BUILDARGS => sub { 
-    shift; #Moose passes some other
-    shift; # stuff that we don't want
-    my $relies_line = shift;
-    (my $git_path, my $safe, my $touch, my @parents) = split(/\t/, $relies_line);
-    return {
-      git_path => $git_path,
-      safe => $safe,
-      touch => $touch,
-      parents => [ @parents ], 
-    };
-  };
-
   ###
   # These attributes come from .relies - they are required for each node and
   # are set at construction
@@ -728,7 +714,8 @@ sub read_reliances {
   open RELIES, "<", $reliesFile;
   while (<RELIES>) {
     chomp;
-    my $child = Node->new($_);
+    (my $git_path, my $safe, my $touch, my @parents) = split(/\t/, $_);
+    my $child = Node->new(git_path => $git_path, safe => $safe, touch => $touch, parents => [ @parents ]);
     $node{$child->git_path} = $child;
   }
   close RELIES;
