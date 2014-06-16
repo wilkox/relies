@@ -729,21 +729,8 @@ sub read_reliances {
     #Get attributes from .relies
     (my $git_path, my $safe, my $touch, my @parents) = split(/\t/, $_);
 
-    #Check if nodes already exist for the parents, and create them if they don't
-
-    foreach my $parent (@parents) {
-      next if exists $node{$parent};
-      my $parent = Node->new(git_path => $parent);
-    }
-
-    #Build node for the child
-    if (exists $node{$git_path}) {
-      $node{$git_path}->safe($safe);
-      $node{$git_path}->touch($touch);
-      $node{$git_path}->parents([ @parents ]);
-    } else {
-      Node->new(git_path => $git_path, safe => $safe, touch => $touch, parents => [ @parents ]);
-    }
+    #Build node
+    Node->new(git_path => $git_path, safe => $safe, touch => $touch, parents => [ @parents ]);
   }
   close RELIES;
 
@@ -779,6 +766,13 @@ sub add_parents {
   $parents{$_}++ for @parents;
   $node{$child}->parents([ keys %parents ]);
 
+  #Add as child to parents
+  foreach my $parent (@parents) {
+    my @children = $node{$parent}->children;
+    @children = (@children, $child);
+    $node{$parent}->children([ @children ]);
+  }
+
 }
 
 #Remove obsolete reliances
@@ -789,6 +783,12 @@ sub remove_parents {
   delete $oldParents{$_} for @bereaved;
   $node{$child}->parents([keys %oldParents]);
 
+  #Remove as child from parents
+  foreach my $parent (@parents) {
+    my @children = $node{$parent}->children;
+    @children = grep { ! $_ eq $child } @children;
+    $node{$parent}->children([ @children ]);
+  }
 }
 
 #Write reliances to file
