@@ -710,7 +710,7 @@ sub validate_path {
 
   #Ensure git knows about the file 
   my $relativePath = File::Spec->abs2rel(abs_path_nd($file));
-  die "ERROR: Git doesn't seem to know about $file\nRun 'git add $file' first\n" unless `git ls-files $relativePath --error-unmatch 2> /dev/null`;
+  die "ERROR: Git doesn't seem to know about $file\nRun 'git add $file' first\n" unless `git ls-files '$relativePath' --error-unmatch 2> /dev/null`;
 
 }
 
