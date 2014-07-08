@@ -179,6 +179,7 @@ package Node {
     my @youngAncestors;
 
     foreach my $ancestor ($self->ancestors) {
+      next if $node{$ancestor}->safe;
       my $ancestorModTime = $node{$ancestor}->last_modified;
       my $compare = DateTime->compare($ancestorModTime, $modTime);
       push(@youngAncestors, $ancestor) if $compare == 1;
@@ -201,6 +202,7 @@ package Node {
       my $compare = DateTime->compare($descendantModTime, $modTime);
       push(@oldDescendants, $descendant) if $compare == -1;
     }
+
     return [@oldDescendants];
   }
 
@@ -331,13 +333,13 @@ package Node {
 
     my $self = shift;
 
-    # Blue    : safed, no old descendants
+    # Blue    : safed
     # Green   : no young ancestors, no old descendants
     # Yellow  : no young ancestors, has old descendants
     # Red     : has young ancestors
 
-    #Blue if safed and no old descendants
-    if ($self->safe and not $self->has_old_descendants) {
+    #Blue if safed
+    if ($self->safe) {
       print color 'blue';
       print $self->relative_path;
 
