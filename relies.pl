@@ -212,6 +212,13 @@ package Node {
         lazy => 1
     );
 
+    #Number of tiers above a node
+    has depth => (
+        is => 'ro', 
+        isa => 'Int', 
+        builder => '_build_depth', 
+        lazy => 1
+    );
     #
     ###
 
@@ -386,11 +393,28 @@ package Node {
 
     }
 
-    #####################
-    ###               ###
-    ### CLASS METHODS ###
-    ###               ###
-    #####################
+    #Number of tiers above a node
+    sub _build_depth {
+        my $self = shift;
+
+        if (! $self->parents) {
+            return 0;
+
+        } else {
+            my $max = 0;
+            foreach ($self->parents) {
+                my $depth = $node{$_}->depth;
+                $max = $depth if $depth > $max;
+            }
+            return $max + 1;
+        }
+    }
+
+    ########################
+    ###                  ###
+    ### INSTANCE METHODS ###
+    ###                  ###
+    ########################
 
     #Print a file, colourised by status
     sub printf { 
@@ -733,10 +757,15 @@ if (@parents || @bereaved) {
     &read_reliances;
 
     #Loop over all files
+    my @report;
     foreach my $file (keys %node) {
-
         next unless $node{$file}->has_young_ancestors;
         next if $node{$file}->safe;
+        push @report, $file;
+    }
+
+    #Report in descending order of depth
+    foreach my $file (sort {$node{$b}->depth <=> $node{$a}->depth} @report) {
         $node{$file}->printf;
         say " relies on:";
         foreach my $youngAncestor ($node{$file}->all_young_ancestors) {
@@ -744,7 +773,6 @@ if (@parents || @bereaved) {
             $node{$youngAncestor}->printf;
             print"\n";
         }
-
     }
 
     exit;
