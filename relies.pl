@@ -109,34 +109,34 @@ package Node {
     # are set at construction
 
     #The path passed to relies
-    has 'git_path' => (
+    has git_path => (
         is => 'ro', 
         isa => 'Str', 
         required => 1
     );
 
     #Parents of this file (i.e. reliances explicitly set by the user)
-    has 'parents' => (
+    has parents => (
         is => 'rw', 
         isa => 'ArrayRef', 
         auto_deref => 1,
     );
 
     #Children of this file (i.e. reliances explicitly set by the user)
-    has 'children' => (
+    has children => (
         is => 'rw', 
         isa => 'ArrayRef', 
         auto_deref => 1,
     );
 
     #Safe flag
-    has 'safe' => (
+    has safe => (
         is => 'rw', 
         isa => 'Int'
     );
 
     #Touch date
-    has 'touch' => (
+    has touch => (
         is => 'rw',
         isa => 'Str'
     );
@@ -149,7 +149,7 @@ package Node {
     # accessor is called
 
     #The relative path
-    has 'relative_path' => (
+    has relative_path => (
         is => 'ro', 
         isa => 'Str', 
         builder => '_build_relative_path', 
@@ -157,7 +157,7 @@ package Node {
     );
 
     #Has the file been modified?
-    has 'has_been_modified' => (
+    has has_been_modified => (
         is => 'ro', 
         isa => 'Int', 
         builder => '_build_has_been_modified', 
@@ -165,7 +165,7 @@ package Node {
     );
 
     #Last modified DateTime
-    has 'last_modified' => (
+    has last_modified => (
         is => 'ro', 
         isa => 'DateTime', 
         builder => '_build_last_modified', 
@@ -173,7 +173,7 @@ package Node {
     );
 
     #Is a touch in effect?
-    has 'touch_in_effect' => (
+    has touch_in_effect => (
         is => 'ro', 
         isa => 'Int', 
         builder => '_build_touch_in_effect', 
@@ -181,7 +181,7 @@ package Node {
     );
 
     #All ancestors of a node
-    has 'ancestors' => (
+    has ancestors => (
         is => 'ro', 
         isa => 'ArrayRef', 
         auto_deref => 1, 
@@ -190,7 +190,7 @@ package Node {
     );
 
     #All descendants of a node
-    has 'descendants' => (
+    has descendants => (
         is => 'ro', 
         isa => 'ArrayRef', 
         auto_deref => 1, 
@@ -199,7 +199,7 @@ package Node {
     );
 
     #Descendants with a mod time < than this file's mod time
-    has 'old_descendants' => (
+    has old_descendants => (
         is => 'ro', 
         isa => 'ArrayRef', 
         traits => ['Array'], 
@@ -212,7 +212,7 @@ package Node {
     );
 
     #Ancestors with a mod time > than this file's mod time
-    has 'young_ancestors' => (
+    has young_ancestors => (
         is => 'ro', 
         isa => 'ArrayRef', 
         traits => ['Array'], 
