@@ -736,6 +736,7 @@ if (@parents || @bereaved) {
     foreach my $file (keys %node) {
 
         next unless $node{$file}->has_young_ancestors;
+        next if $node{$file}->safe;
         $node{$file}->printf;
         say " relies on:";
         foreach my $youngAncestor ($node{$file}->all_young_ancestors) {
