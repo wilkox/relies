@@ -88,20 +88,6 @@ package Node {
         my $gitPath = $self->git_path;
         $node{$gitPath} = $self;
 
-        #Ensure the parents of this node know
-        # it is a child
-        foreach my $parent ($self->parents) {
-
-            #Create the parent node if it doesn't
-            # already exist
-            unless (exists $node{$parent}) {
-                $node{$parent} = Node->new(git_path => $parent);
-            }
-
-            #Add self to the list of children
-            my %children = map {$_ => 1} ($node{$parent}->children, $self->git_path);
-            $node{$parent}->children([ keys %children ]);
-        }
     }
 
     ###
@@ -117,13 +103,6 @@ package Node {
 
     #Parents of this file (i.e. reliances explicitly set by the user)
     has parents => (
-        is => 'rw', 
-        isa => 'ArrayRef', 
-        auto_deref => 1,
-    );
-
-    #Children of this file (i.e. reliances explicitly set by the user)
-    has children => (
         is => 'rw', 
         isa => 'ArrayRef', 
         auto_deref => 1,
@@ -180,6 +159,15 @@ package Node {
         lazy => 1
     );
 
+    #Children of this node
+    has children => (
+        is => 'rw', 
+        isa => 'ArrayRef', 
+        auto_deref => 1,
+        builder => '_build_children',
+        lazy => 1
+    );
+
     #All ancestors of a node
     has ancestors => (
         is => 'ro', 
@@ -232,6 +220,20 @@ package Node {
     ### BUILDER METHODS ###
     ###                 ###
     #######################
+
+    #Children
+    sub _build_children {
+    
+        my $self = shift;
+        my $gitPath = $self->git_path;
+
+        my @children;
+        foreach my $potentialChild (keys %node) {
+            push(@children, $potentialChild) if grep { $_ eq $gitPath } $node{$potentialChild}->parents;
+        }
+
+        return [@children];
+    }
 
     #Ancestors with a mod time > than this file's mod time
     sub _build_young_ancestors {
