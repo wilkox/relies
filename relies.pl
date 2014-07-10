@@ -369,7 +369,7 @@ package Node {
             #Need to do a little parsing on date as git doesn't output
             # correct ISO8601 format (thanks...)
             my $ISO8601 = qr/^(?<date>\d{4}-\d{2}-\d{2})\s(?<time>\d{2}:\d{2}:\d{2})\s\+(?<timezonehour>\d{2})(?<timezoneminute>\d{2})$/;
-            die "ERROR: 'git log --date=iso' returned a non-ISO8601 formatted date\n$gitTime\n" unless $gitTime =~ /$ISO8601/;
+            die "ERROR: 'git log -1 --format=\"%ad\" --date=iso $fileName' returned a non-ISO8601 formatted date\n$gitTime\n" unless $gitTime =~ /$ISO8601/;
             $gitTime = $+{date} . "T" . $+{time} . "+" . $+{timezonehour} . ":" . $+{timezoneminute};
             $modTime = DateTime::Format::ISO8601->parse_datetime($gitTime);
 
