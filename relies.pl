@@ -23,7 +23,7 @@ $|++;
 my $gitRoot = `git rev-parse --show-toplevel` or die "\n";
 chomp $gitRoot;
 
-my $reliesFile = $gitRoot . "/.relies";
+my $reliesFile = "$gitRoot/.relies";
 
 #Store for Node objects
 # Key: passed path
@@ -35,7 +35,7 @@ my $command;
 my @parents; #Special infix option
 my @bereaved; #Special infix option
 my @fileList;
-my %validCommand = map { $_ => 1 } qw(safe unsafe whither whence family parents children status touch untouch doctor);
+my %validCommand = map { $_ => 1 } qw(safe unsafe whither whence family parents children status touch untouch doctor bless);
 $command = shift(@ARGV) if @ARGV > 0 and $validCommand{$ARGV[0]};
 
 GetOptions (
@@ -294,7 +294,7 @@ package Node {
     sub _build_relative_path {
 
         my $self = shift;
-        my $relativePath = File::Spec->abs2rel($gitRoot . "/" . $self->git_path);
+        my $relativePath = File::Spec->abs2rel("$gitRoot/" . $self->git_path);
         return $relativePath;
 
     }
@@ -777,6 +777,25 @@ if (@parents || @bereaved) {
 
     exit;
 
+#Touch all old descendants
+} elsif ($command eq 'bless') {
+
+    #Read reliances store into memory
+    &read_reliances;
+
+    #Touch old descendants
+    foreach my $file (@fileList) {
+        next unless exists $node{$file};
+        my $now = DateTime->now()->iso8601_with_tz;
+        $node{$_}->touch($now) for $node{$file}->all_old_descendants;
+    }
+
+    #Write reliances store to file
+    &write_reliances;
+
+    #Done
+    say 'OK';
+    exit;
 #Catch weirdness
 } else {
     say "Command is $command";
